@@ -57,7 +57,8 @@ function UsernameInput({ value, locked, onChange, onLock, onUnlock }) {
         <input
           value={value}
           onChange={e => !locked && onChange(e.target.value)}
-          placeholder="e.g. K o o k i e"
+          onKeyDown={e => { if (e.key === "Enter" && !locked && value.trim()) onLock(); }}
+          placeholder="e.g. Kookie"
           disabled={locked}
           style={{
             ...inputStyle, flex: 1,
@@ -190,11 +191,17 @@ function VotingForm({ pollData, onRefresh }) {
 }
 
 // ── MVP Poll Form ─────────────────────────────────────────────────────────────
+// staffRanks: ["Name1", "Name2", "Name3"]  (index 0 = #1 pick = 3pts)
+// adminRanks: ["Name1", "Name2"]           (index 0 = #1 pick = 3pts)
+const STAFF_POINTS = [3, 2, 1];
+const ADMIN_POINTS = [3, 2];
+const RANK_COLORS  = ["#f5c542", "#a8b2c0", "#cd7f32"]; // gold, silver, bronze
+
 function MvpForm({ pollData, onRefresh }) {
   const [voterName, setVoterName] = useState("");
   const [locked, setLocked]       = useState(false);
-  const [staffPick, setStaffPick] = useState(null);
-  const [adminPick, setAdminPick] = useState(null);
+  const [staffRanks, setStaffRanks] = useState([]); // ordered array of names
+  const [adminRanks, setAdminRanks] = useState([]);
   const [submitted, setSubmitted] = useState(false);
   const [error, setError]         = useState("");
   const [loading, setLoading]     = useState(false);
@@ -202,15 +209,26 @@ function MvpForm({ pollData, onRefresh }) {
   const lowerVoter = voterName.trim().toLowerCase();
   const mvp = pollData.mvp || {};
 
+  const handleRankClick = (name, ranks, setRanks, maxPicks) => {
+    const idx = ranks.indexOf(name);
+    if (idx !== -1) {
+      // already picked — remove it and shift everything after it up
+      setRanks(ranks.filter((_, i) => i !== idx));
+    } else if (ranks.length < maxPicks) {
+      // not yet picked and slots remain — add to end
+      setRanks([...ranks, name]);
+    }
+  };
+
   const handleSubmit = async () => {
     if (!voterName.trim()) { setError("Please enter your username."); return; }
-    if (!locked) { setError("Please lock in your username first (click ⏎)."); return; }
-    if (mvp.staffEnabled && !staffPick) { setError("Please pick a Staff MVP."); return; }
-    if (mvp.adminEnabled && !adminPick) { setError("Please pick an Admin MVP."); return; }
+    if (!locked) { setError("Please lock in your username first (press Enter or click ⏎)."); return; }
+    if (mvp.staffEnabled && staffRanks.length === 0) { setError("Please pick at least one Staff MVP."); return; }
+    if (mvp.adminEnabled && adminRanks.length === 0) { setError("Please pick at least one Admin MVP."); return; }
     setLoading(true); setError("");
     const res = await apiFetch("/api/mvp-vote", {
       method: "POST",
-      body: { voterName: voterName.trim(), staffPick, adminPick },
+      body: { voterName: voterName.trim(), staffRanks, adminRanks },
     });
     setLoading(false);
     if (res.error) { setError(res.error); return; }
@@ -226,23 +244,43 @@ function MvpForm({ pollData, onRefresh }) {
     </div>
   );
 
-  const CandidateBtn = ({ name, selected, onSelect }) => {
-    const isSelf = locked && lowerVoter === name.toLowerCase();
+  const RankBtn = ({ name, ranks, setRanks, maxPicks, pointsArr }) => {
+    const isSelf  = locked && lowerVoter === name.toLowerCase();
+    const rankIdx = ranks.indexOf(name);
+    const picked  = rankIdx !== -1;
+    const rank    = rankIdx + 1; // 1-based display
+    const full    = !picked && ranks.length >= maxPicks;
+    const color   = picked ? RANK_COLORS[rankIdx] : null;
+
     return (
-      <button onClick={() => !isSelf && onSelect(name)} disabled={isSelf} style={{
-        padding: "11px 18px", borderRadius: 9, textAlign: "left",
-        border: `2px solid ${selected ? "#f5c542" : isSelf ? "rgba(255,255,255,0.04)" : "rgba(255,255,255,0.1)"}`,
-        background: selected ? "rgba(245,197,66,0.12)" : isSelf ? "rgba(255,255,255,0.01)" : "rgba(255,255,255,0.03)",
-        color: isSelf ? "#444" : selected ? "#f5c542" : "#ccc",
-        fontFamily: "'Cinzel',serif", fontWeight: 700, fontSize: 13,
-        cursor: isSelf ? "not-allowed" : "pointer", letterSpacing: 0.5,
-        transition: "all 0.15s",
-        boxShadow: selected ? "0 0 14px rgba(245,197,66,0.25)" : "none",
-        display: "flex", alignItems: "center", justifyContent: "space-between", width: "100%",
-      }}>
+      <button
+        onClick={() => !isSelf && handleRankClick(name, ranks, setRanks, maxPicks)}
+        disabled={isSelf || full}
+        style={{
+          padding: "11px 18px", borderRadius: 9, textAlign: "left",
+          border: `2px solid ${picked ? color : isSelf || full ? "rgba(255,255,255,0.04)" : "rgba(255,255,255,0.1)"}`,
+          background: picked ? `${color}18` : isSelf || full ? "rgba(255,255,255,0.01)" : "rgba(255,255,255,0.03)",
+          color: isSelf ? "#444" : full ? "#555" : picked ? color : "#ccc",
+          fontFamily: "'Cinzel',serif", fontWeight: 700, fontSize: 13,
+          cursor: isSelf || full ? "not-allowed" : "pointer", letterSpacing: 0.5,
+          transition: "all 0.15s",
+          boxShadow: picked ? `0 0 14px ${color}33` : "none",
+          display: "flex", alignItems: "center", justifyContent: "space-between", width: "100%",
+        }}
+      >
         <span>{name}</span>
-        {isSelf && <span style={{ fontSize: 11, color: "#555", fontWeight: 400 }}>yourself</span>}
-        {selected && <span style={{ fontSize: 16 }}>★</span>}
+        <span style={{ display: "flex", alignItems: "center", gap: 8 }}>
+          {isSelf && <span style={{ fontSize: 11, color: "#555", fontWeight: 400 }}>yourself</span>}
+          {full && !isSelf && <span style={{ fontSize: 11, color: "#555", fontWeight: 400 }}>max reached</span>}
+          {picked && (
+            <span style={{
+              background: color, color: "#1a1200", borderRadius: 6,
+              padding: "2px 10px", fontSize: 12, fontWeight: 900, minWidth: 28, textAlign: "center",
+            }}>
+              #{rank} · {pointsArr[rankIdx]}pt{pointsArr[rankIdx] !== 1 ? "s" : ""}
+            </span>
+          )}
+        </span>
       </button>
     );
   };
@@ -253,18 +291,32 @@ function MvpForm({ pollData, onRefresh }) {
         value={voterName} locked={locked}
         onChange={setVoterName}
         onLock={() => voterName.trim() && setLocked(true)}
-        onUnlock={() => { setLocked(false); setStaffPick(null); setAdminPick(null); }}
+        onUnlock={() => { setLocked(false); setStaffRanks([]); setAdminRanks([]); }}
       />
 
       {mvp.staffEnabled && (
         <div style={{ marginBottom: 28 }}>
           <div style={sectionHeaderStyle}>⭐ Staff MVP</div>
           <p style={{ color: "#666", fontSize: 13, marginBottom: 14 }}>
-            Pick the top staff member of the month.
+            Rank up to <strong style={{ color: "#ccc" }}>3 staff members</strong>. #1 = 3pts, #2 = 2pts, #3 = 1pt.
+            Click a selected name again to deselect.
           </p>
+          {/* rank summary chips */}
+          <div style={{ display: "flex", gap: 8, marginBottom: 14, minHeight: 28 }}>
+            {[0,1,2].map(i => (
+              <div key={i} style={{
+                padding: "3px 12px", borderRadius: 6, fontSize: 12, fontWeight: 700,
+                border: `1px solid ${staffRanks[i] ? RANK_COLORS[i] : "rgba(255,255,255,0.08)"}`,
+                color: staffRanks[i] ? RANK_COLORS[i] : "#444",
+                background: staffRanks[i] ? `${RANK_COLORS[i]}15` : "transparent",
+              }}>
+                {staffRanks[i] ? `#${i+1} ${staffRanks[i]}` : `#${i+1} —`}
+              </div>
+            ))}
+          </div>
           <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
             {(mvp.staffCandidates || []).map(name => (
-              <CandidateBtn key={name} name={name} selected={staffPick === name} onSelect={setStaffPick} />
+              <RankBtn key={name} name={name} ranks={staffRanks} setRanks={setStaffRanks} maxPicks={3} pointsArr={STAFF_POINTS} />
             ))}
           </div>
         </div>
@@ -274,11 +326,25 @@ function MvpForm({ pollData, onRefresh }) {
         <div style={{ marginBottom: 28 }}>
           <div style={sectionHeaderStyle}>👑 Admin MVP</div>
           <p style={{ color: "#666", fontSize: 13, marginBottom: 14 }}>
-            Pick the top admin of the month.
+            Rank up to <strong style={{ color: "#ccc" }}>2 admins</strong>. #1 = 3pts, #2 = 2pts.
+            Click a selected name again to deselect.
           </p>
+          {/* rank summary chips */}
+          <div style={{ display: "flex", gap: 8, marginBottom: 14, minHeight: 28 }}>
+            {[0,1].map(i => (
+              <div key={i} style={{
+                padding: "3px 12px", borderRadius: 6, fontSize: 12, fontWeight: 700,
+                border: `1px solid ${adminRanks[i] ? RANK_COLORS[i] : "rgba(255,255,255,0.08)"}`,
+                color: adminRanks[i] ? RANK_COLORS[i] : "#444",
+                background: adminRanks[i] ? `${RANK_COLORS[i]}15` : "transparent",
+              }}>
+                {adminRanks[i] ? `#${i+1} ${adminRanks[i]}` : `#${i+1} —`}
+              </div>
+            ))}
+          </div>
           <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
             {(mvp.adminCandidates || []).map(name => (
-              <CandidateBtn key={name} name={name} selected={adminPick === name} onSelect={setAdminPick} />
+              <RankBtn key={name} name={name} ranks={adminRanks} setRanks={setAdminRanks} maxPicks={2} pointsArr={ADMIN_POINTS} />
             ))}
           </div>
         </div>
@@ -319,17 +385,23 @@ function tally(staff, votes) {
   });
 }
 
-function tallyMvp(candidates, votes, key) {
-  const counts = {};
-  for (const name of candidates) counts[name] = 0;
+function tallyMvp(candidates, votes, ranksKey, pointsArr) {
+  const points = {};
+  const voteCounts = {};
+  for (const name of candidates) { points[name] = 0; voteCounts[name] = 0; }
   for (const v of Object.values(votes)) {
-    const pick = v[key];
-    if (pick && counts[pick] !== undefined) counts[pick]++;
+    const ranks = v[ranksKey] || [];
+    ranks.forEach((name, idx) => {
+      if (points[name] !== undefined) {
+        points[name] += pointsArr[idx] || 0;
+        voteCounts[name]++;
+      }
+    });
   }
-  const total = Object.values(counts).reduce((a, b) => a + b, 0);
-  return Object.entries(counts)
-    .map(([name, n]) => ({ name, count: n, pct: total ? Math.round((n / total) * 100) : 0 }))
-    .sort((a, b) => b.count - a.count);
+  const totalPts = Object.values(points).reduce((a, b) => a + b, 0);
+  return Object.entries(points)
+    .map(([name, pts]) => ({ name, pts, votes: voteCounts[name], pct: totalPts ? Math.round((pts / totalPts) * 100) : 0 }))
+    .sort((a, b) => b.pts - a.pts);
 }
 
 // ── Results Panel ─────────────────────────────────────────────────────────────
@@ -397,7 +469,7 @@ function ResultsPanel({ pollData }) {
       <div style={{ marginTop: 20, marginBottom: 16 }}>
         <label style={labelStyle}>Changes (one per line)</label>
         <textarea value={changes} onChange={e => setChanges(e.target.value)} rows={4}
-          placeholder={"Username to Support\nUsername 2 to Support"}
+          placeholder={"C4rdZ to Support\nBaekhyeon to Support"}
           style={{ ...inputStyle, resize: "vertical", fontFamily: "monospace", fontSize: 13 }} />
       </div>
       <button onClick={copy} style={{
@@ -421,8 +493,8 @@ function MvpResultsPanel({ pollData }) {
   const mvp = pollData.mvp || {};
   const mvpVotes = pollData.mvpVotes || {};
   const totalVoters = Object.keys(mvpVotes).length;
-  const staffResults = tallyMvp(mvp.staffCandidates || [], mvpVotes, "staffPick");
-  const adminResults = tallyMvp(mvp.adminCandidates || [], mvpVotes, "adminPick");
+  const staffResults = tallyMvp(mvp.staffCandidates || [], mvpVotes, "staffRanks", STAFF_POINTS);
+  const adminResults = tallyMvp(mvp.adminCandidates || [], mvpVotes, "adminRanks", ADMIN_POINTS);
 
   return (
     <div>
@@ -434,12 +506,12 @@ function MvpResultsPanel({ pollData }) {
           <div style={sectionHeaderStyle}>⭐ Staff MVP</div>
           {staffResults.map((r, i) => (
             <div key={r.name} style={{ ...cardStyle, marginBottom: 8, display: "flex", alignItems: "center", gap: 12 }}>
-              <span style={{ fontFamily: "'Cinzel',serif", fontSize: 18, color: i === 0 ? "#f5c542" : "#555", width: 24 }}>
+              <span style={{ fontFamily: "'Cinzel',serif", fontSize: 18, color: RANK_COLORS[i] || "#555", width: 24, flexShrink: 0 }}>
                 {i === 0 ? "★" : `${i + 1}`}
               </span>
               <span style={{ fontFamily: "'Cinzel',serif", color: "#e8d5a3", fontWeight: 700, flex: 1 }}>{r.name}</span>
-              <span style={{ color: "#f5c542", fontWeight: 700, fontSize: 14 }}>{r.pct}%</span>
-              <span style={{ color: "#555", fontSize: 12 }}>{r.count} vote(s)</span>
+              <span style={{ color: "#f5c542", fontWeight: 700, fontSize: 14 }}>{r.pts} pts</span>
+              <span style={{ color: "#555", fontSize: 11 }}>{r.votes} vote(s)</span>
             </div>
           ))}
         </div>
@@ -449,12 +521,12 @@ function MvpResultsPanel({ pollData }) {
           <div style={sectionHeaderStyle}>👑 Admin MVP</div>
           {adminResults.map((r, i) => (
             <div key={r.name} style={{ ...cardStyle, marginBottom: 8, display: "flex", alignItems: "center", gap: 12 }}>
-              <span style={{ fontFamily: "'Cinzel',serif", fontSize: 18, color: i === 0 ? "#f5c542" : "#555", width: 24 }}>
+              <span style={{ fontFamily: "'Cinzel',serif", fontSize: 18, color: RANK_COLORS[i] || "#555", width: 24, flexShrink: 0 }}>
                 {i === 0 ? "★" : `${i + 1}`}
               </span>
               <span style={{ fontFamily: "'Cinzel',serif", color: "#e8d5a3", fontWeight: 700, flex: 1 }}>{r.name}</span>
-              <span style={{ color: "#f5c542", fontWeight: 700, fontSize: 14 }}>{r.pct}%</span>
-              <span style={{ color: "#555", fontSize: 12 }}>{r.count} vote(s)</span>
+              <span style={{ color: "#f5c542", fontWeight: 700, fontSize: 14 }}>{r.pts} pts</span>
+              <span style={{ color: "#555", fontSize: 11 }}>{r.votes} vote(s)</span>
             </div>
           ))}
         </div>
@@ -742,3 +814,5 @@ export default function App() {
     </>
   );
 }
+
+
