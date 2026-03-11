@@ -775,7 +775,7 @@ function AdminPanel({ pollData, onRefresh }) {
   const reset = async () => {
     if (!window.confirm("Reset all votes and advance to the next poll number?")) return;
     setResetting(true);
-    await apiFetch("/api/admin/reset", { method: "DELETE", body: { adminPassword: Jac098 } });
+    await apiFetch("/api/admin/reset", { method: "DELETE", body: { adminPassword: pw } });
     setResetting(false);
     onRefresh();
   };
@@ -811,7 +811,7 @@ function AdminPanel({ pollData, onRefresh }) {
       </div>
       {subTab === "results"  && <ResultsPanel    pollData={pollData} />}
       {subTab === "mvp"      && <MvpResultsPanel pollData={pollData} />}
-      {subTab === "settings" && <SettingsPanel   pollData={pollData} adminPassword={Jac098} onRefresh={onRefresh} />}
+      {subTab === "settings" && <SettingsPanel   pollData={pollData} adminPassword={pw} onRefresh={onRefresh} />}
     </div>
   );
 }
