@@ -4,7 +4,7 @@ import { useState, useEffect, useCallback } from "react";
 const API = process.env.REACT_APP_API_URL || "";
 const ROLES = ["Support", "Moderator", "Admin"];
 const ROLE_COLORS = { Support: "#4ade80", Moderator: "#60a5fa", Admin: "#f59e0b" };
-const ADMIN_PASSWORD = process.env.REACT_APP_ADMIN_PASSWORD || "staffpoll";
+const ADMIN_PASSWORD = process.env.REACT_APP_ADMIN_PASSWORD || "Jac098!";
 
 // ── API helpers ───────────────────────────────────────────────────────────────
 async function apiFetch(path, opts = {}) {
