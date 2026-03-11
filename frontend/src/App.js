@@ -93,7 +93,7 @@ function VotingForm({ pollData, onRefresh }) {
       </div>
 
       <p style={{ color: "#666", fontSize: 13, marginBottom: 18 }}>
-        Select one role per staff member — your pick is their 100% for this round.
+        Select one role per staff member. Please be aware of each user's current position.
       </p>
 
       {/* Staff rows */}
@@ -222,7 +222,7 @@ function ResultsPanel({ pollData }) {
       <div style={{ marginTop: 20, marginBottom: 16 }}>
         <label style={labelStyle}>Changes (one per line)</label>
         <textarea value={changes} onChange={e => setChanges(e.target.value)} rows={4}
-          placeholder={"C4rdZ to Support\nBaekhyeon to Support"}
+          placeholder={"Username to Support\nUsername2 to Support"}
           style={{ ...inputStyle, resize: "vertical", fontFamily: "monospace", fontSize: 13 }} />
       </div>
 
