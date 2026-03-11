@@ -75,12 +75,15 @@ app.post("/api/vote", async (req, res) => {
     return res.status(409).json({ error: "Already voted" });
   }
 
-  // Validate every staff member has a vote
-  for (const m of data.staff) {
-    if (!votes[m.username]) {
-      return res.status(400).json({ error: `Missing vote for ${m.username}` });
-    }
+  // Validate every staff member has a vote, excluding the voter
+for (const m of data.staff) {
+  // Skip the voter
+  if (m.username.toLowerCase() === key) continue;
+  
+  if (!votes[m.username]) {
+    return res.status(400).json({ error: `Missing vote for ${m.username}` });
   }
+}
 
   data.votes[key] = votes;
   data.voterNames.push(key);
