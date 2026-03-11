@@ -20,15 +20,17 @@ if (fs.existsSync(FRONTEND_BUILD)) {
 const DEFAULT_DATA = {
   pollNumber: 29,
   staff: [
-    { username: "isolated26", currentRole: "Support" },
-    { username: "ryan777h",   currentRole: "Moderator" },
-    { username: "dharok69",   currentRole: "Moderator" },
-    { username: "rutte98",    currentRole: "Moderator" },
-    { username: "sodaflyff",  currentRole: "Moderator" },
-    { username: "kookie0420", currentRole: "Admin" },
-    { username: "lilnois",    currentRole: "Admin" },
-    { username: "digmon",     currentRole: "Admin" },
-    { username: "pvmbrad",    currentRole: "Admin" },
+    { username: "I D C", currentRole: "Support" },
+    { username: "C4rdZ",   currentRole: "Support" },
+    { username: "Baekhyeon",   currentRole: "Support" },
+    { username: "Rg A",    currentRole: "Moderator" },
+    { username: "Roadblock",  currentRole: "Moderator" },
+    { username: "Rutte 95", currentRole: "Moderator" },
+    { username: "Sky H",    currentRole: "Moderator" },
+    { username: "K o o k i e",     currentRole: "Admin" },
+    { username: "Bustable",     currentRole: "Admin" },
+    { username: "Nois",     currentRole: "Admin" },
+    { username: "Pinecone",    currentRole: "Admin" },
   ],
   votes: {},       // { voterName: { staffUsername: "Role" } }
   voterNames: [],  // lowercase list for dupe detection
