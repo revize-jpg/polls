@@ -96,7 +96,7 @@ function UsernameInput({ value, locked, onChange, onLock, onUnlock }) {
           value={value}
           onChange={e => !locked && onChange(e.target.value)}
           onKeyDown={e => { if (e.key === "Enter" && !locked && value.trim()) onLock(); }}
-          placeholder="e.g. Kookie"
+          placeholder="e.g. K o o k i e"
           disabled={locked}
           style={{
             ...inputStyle, flex: 1,
@@ -783,7 +783,7 @@ function AdminPanel({ pollData, onRefresh }) {
   if (!unlocked) return (
     <div style={{ textAlign: "center", padding: "28px 0" }}>
       <div style={{ fontSize: 40, marginBottom: 14 }}>🔒</div>
-      <p style={{ color: "#888", marginBottom: 14, fontSize: 14 }}>Admin access required</p>
+      <p style={{ color: "#888", marginBottom: 14, fontSize: 14 }}>Tyler access required</p>
       <input type="password" value={pw} onChange={e => setPw(e.target.value)}
         onKeyDown={e => e.key === "Enter" && unlock()}
         placeholder="Password" style={{ ...inputStyle, width: "100%", textAlign: "center", marginBottom: 12 }} />
