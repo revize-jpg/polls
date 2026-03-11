@@ -167,7 +167,7 @@ function VotingForm({ pollData, onRefresh }) {
     <div style={{ textAlign: "center", padding: "60px 20px" }}>
       <div style={{ fontSize: 52, marginBottom: 14 }}>⚔️</div>
       <h2 style={{ fontFamily: "'Cinzel',serif", color: "#e8d5a3", fontSize: 22, marginBottom: 8 }}>Vote Recorded</h2>
-      <p style={{ color: "#888", fontSize: 14 }}>Your vote for Staff Results #{pollData.pollNumber} has been saved.</p>
+      <p style={{ color: "#888", fontSize: 14 }}>Your vote for Staff Poll #{pollData.pollNumber} has been saved.</p>
     </div>
   );
 
@@ -180,7 +180,7 @@ function VotingForm({ pollData, onRefresh }) {
         onUnlock={() => setLocked(false)}
       />
       <p style={{ color: "#666", fontSize: 13, marginBottom: 18 }}>
-        Select one role per staff member — your pick counts as their 100%.
+        Select one choice per staff member.
       </p>
 
       {pollData.staff.map(m => {
@@ -868,7 +868,7 @@ export default function App() {
         <div style={{ maxWidth: 660, margin: "0 auto", animation: "fadeIn 0.55s ease" }}>
           <div style={{ textAlign: "center", marginBottom: 30 }}>
             <div style={{ fontSize: 11, letterSpacing: 4, color: "#b8860b", textTransform: "uppercase", marginBottom: 8 }}>Reason Private Server</div>
-            <h1 style={{ fontFamily: "'Cinzel',serif", fontSize: 27, fontWeight: 900, color: "#e8d5a3", letterSpacing: 2, lineHeight: 1.2 }}>Staff Results #{pollData.pollNumber}</h1>
+            <h1 style={{ fontFamily: "'Cinzel',serif", fontSize: 27, fontWeight: 900, color: "#e8d5a3", letterSpacing: 2, lineHeight: 1.2 }}>Staff Polls</h1>
             <div style={{ width: 60, height: 2, background: "linear-gradient(90deg,transparent,#b8860b,transparent)", margin: "12px auto 0" }} />
           </div>
           <div style={{ display: "flex", background: "rgba(255,255,255,0.04)", borderRadius: 10, padding: 4, marginBottom: 22, border: "1px solid rgba(255,255,255,0.07)" }}>
