@@ -133,16 +133,16 @@ function VotingForm({ pollData, onRefresh }) {
   const [voterName, setVoterName] = useState("");
   const [locked, setLocked]       = useState(false);
   const [picks, setPicks]         = useState({});
+  const [feedback, setFeedback]   = useState("");
   const [submitted, setSubmitted] = useState(false);
   const [error, setError]         = useState("");
   const [loading, setLoading]     = useState(false);
 
-  // FIX: isSelf always uses live voterName — even before lock
   const isSelfFn = (username) =>
     voterName.trim().toLowerCase() === username.toLowerCase() && voterName.trim() !== "";
 
   const pick = (username, role) => {
-    if (isSelfFn(username)) return; // block even before lock
+    if (isSelfFn(username)) return;
     setPicks(p => ({ ...p, [username]: role }));
   };
 
@@ -152,10 +152,11 @@ function VotingForm({ pollData, onRefresh }) {
     if (!voterName.trim()) { setError("Please enter your username."); return; }
     if (!locked) { setError("Please lock in your username first (click ⏎)."); return; }
     if (!allPicked) { setError("Please cast a vote for every staff member."); return; }
+    if (!feedback.trim()) { setError("Please fill in the feedback box before submitting."); return; }
     setLoading(true); setError("");
     const res = await apiFetch("/api/vote", {
       method: "POST",
-      body: { voterName: voterName.trim(), votes: picks },
+      body: { voterName: voterName.trim(), votes: picks, feedback: feedback.trim() },
     });
     setLoading(false);
     if (res.error) { setError(res.error); return; }
@@ -225,9 +226,148 @@ function VotingForm({ pollData, onRefresh }) {
         );
       })}
 
+      {/* ── Feedback box ── */}
+      <div style={{ marginTop: 8, marginBottom: 20 }}>
+        <label style={labelStyle}>Vote Feedback <span style={{ color: "#ff8888", fontSize: 10 }}>* required</span></label>
+        <textarea
+          value={feedback}
+          onChange={e => setFeedback(e.target.value)}
+          rows={4}
+          placeholder="Explain any vote results here. Your message will be reworded if the player wishes to receive this feedback. Type N/A if not applicable."
+          style={{
+            ...inputStyle, resize: "vertical", fontFamily: "'Crimson Pro', serif", fontSize: 13,
+            lineHeight: 1.6,
+            borderColor: !feedback.trim() ? "rgba(255,100,100,0.25)" : "rgba(255,255,255,0.13)",
+          }}
+        />
+      </div>
+
       {error && <div style={errorStyle}>⚠ {error}</div>}
       <button onClick={handleSubmit} disabled={loading} style={submitBtnStyle}>
         {loading ? "Submitting…" : "Submit Vote"}
+      </button>
+    </div>
+  );
+}
+
+// ── Staff Applicants Form ─────────────────────────────────────────────────────
+function ApplicantsForm({ pollData, onRefresh }) {
+  const [voterName, setVoterName] = useState("");
+  const [locked, setLocked]       = useState(false);
+  const [picks, setPicks]         = useState([]); // up to 3 names
+  const [submitted, setSubmitted] = useState(false);
+  const [error, setError]         = useState("");
+  const [loading, setLoading]     = useState(false);
+
+  const applicants = (pollData.applicants || {}).candidates || [];
+  const MAX_PICKS = 3;
+
+  const isSelfFn = (name) =>
+    voterName.trim().toLowerCase() === name.toLowerCase() && voterName.trim() !== "";
+
+  const handleNameChange = (v) => {
+    setVoterName(v);
+    const lower = v.trim().toLowerCase();
+    setPicks(p => p.filter(n => n.toLowerCase() !== lower));
+  };
+
+  const togglePick = (name) => {
+    if (isSelfFn(name)) return;
+    setPicks(p => {
+      if (p.includes(name)) return p.filter(n => n !== name);
+      if (p.length >= MAX_PICKS) return p;
+      return [...p, name];
+    });
+  };
+
+  const handleSubmit = async () => {
+    if (!voterName.trim()) { setError("Please enter your username."); return; }
+    if (!locked) { setError("Please lock in your username first (press Enter or click ⏎)."); return; }
+    if (picks.length === 0) { setError("Please select at least one applicant."); return; }
+    setLoading(true); setError("");
+    const res = await apiFetch("/api/applicant-vote", {
+      method: "POST",
+      body: { voterName: voterName.trim(), picks },
+    });
+    setLoading(false);
+    if (res.error) { setError(res.error); return; }
+    setSubmitted(true);
+    onRefresh();
+  };
+
+  if (submitted) return (
+    <div style={{ textAlign: "center", padding: "60px 20px" }}>
+      <div style={{ fontSize: 52, marginBottom: 14 }}>📋</div>
+      <h2 style={{ fontFamily: "'Cinzel',serif", color: "#e8d5a3", fontSize: 22, marginBottom: 8 }}>Applicant Vote Recorded</h2>
+      <p style={{ color: "#888", fontSize: 14 }}>Thanks for your input!</p>
+    </div>
+  );
+
+  if (applicants.length === 0) return (
+    <div style={{ textAlign: "center", padding: "50px 20px", color: "#555", fontSize: 14 }}>
+      No applicants are currently listed for voting.
+    </div>
+  );
+
+  return (
+    <div>
+      <UsernameInput
+        value={voterName} locked={locked}
+        onChange={handleNameChange}
+        onLock={() => voterName.trim() && setLocked(true)}
+        onUnlock={() => { setLocked(false); setPicks([]); }}
+      />
+
+      <div style={{ marginBottom: 16 }}>
+        <div style={sectionHeaderStyle}>📋 Staff Applicants</div>
+        <p style={{ color: "#666", fontSize: 13, marginBottom: 14 }}>
+          Select up to <strong style={{ color: "#ccc" }}>3 applicants</strong> you think should be considered for staff.
+          At least one selection is required.
+        </p>
+
+        {/* pick count summary */}
+        <div style={{ marginBottom: 14, fontSize: 12, color: picks.length > 0 ? "#f5c542" : "#555" }}>
+          {picks.length === 0 ? "No selections yet" : `${picks.length} / ${MAX_PICKS} selected`}
+          {picks.length > 0 && <span style={{ color: "#666" }}> — {picks.join(", ")}</span>}
+        </div>
+
+        <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+          {applicants.map(name => {
+            const isSelf    = isSelfFn(name);
+            const selected  = picks.includes(name);
+            const full      = !selected && picks.length >= MAX_PICKS;
+            return (
+              <button
+                key={name}
+                onClick={() => togglePick(name)}
+                disabled={isSelf || full}
+                style={{
+                  padding: "11px 18px", borderRadius: 9, textAlign: "left",
+                  border: `2px solid ${selected ? "#60a5fa" : isSelf || full ? "rgba(255,255,255,0.04)" : "rgba(255,255,255,0.1)"}`,
+                  background: selected ? "rgba(96,165,250,0.12)" : isSelf || full ? "rgba(255,255,255,0.01)" : "rgba(255,255,255,0.03)",
+                  color: isSelf ? "#444" : full ? "#555" : selected ? "#60a5fa" : "#ccc",
+                  fontFamily: "'Cinzel',serif", fontWeight: 700, fontSize: 13,
+                  cursor: isSelf || full ? "not-allowed" : "pointer", letterSpacing: 0.5,
+                  transition: "all 0.15s",
+                  boxShadow: selected ? "0 0 14px rgba(96,165,250,0.2)" : "none",
+                  display: "flex", alignItems: "center", justifyContent: "space-between", width: "100%",
+                }}
+              >
+                <span>{name}</span>
+                <span style={{ display: "flex", alignItems: "center", gap: 6 }}>
+                  {isSelf && <span style={{ fontSize: 11, color: "#555", fontWeight: 400 }}>yourself</span>}
+                  {full && !isSelf && <span style={{ fontSize: 11, color: "#555", fontWeight: 400 }}>max reached</span>}
+                  {selected && <span style={{ fontSize: 15 }}>✓</span>}
+                </span>
+              </button>
+            );
+          })}
+        </div>
+      </div>
+
+      {error && <div style={errorStyle}>⚠ {error}</div>}
+      <button onClick={handleSubmit} disabled={loading} style={submitBtnStyle}>
+        {loading ? "Submitting…" : "Submit Applicant Vote"}
       </button>
     </div>
   );
@@ -246,7 +386,6 @@ function MvpForm({ pollData, onRefresh }) {
   const mvp        = pollData.mvp || {};
   const monthLabel = mvp.month ? `${mvp.month} ` : "";
 
-  // FIX: isSelf works before lock too
   const isSelfFn = (name) =>
     voterName.trim().toLowerCase() === name.toLowerCase() && voterName.trim() !== "";
 
@@ -257,7 +396,6 @@ function MvpForm({ pollData, onRefresh }) {
     else if (ranks.length < maxPicks) setRanks([...ranks, name]);
   };
 
-  // When name changes, strip self from any existing rank arrays
   const handleNameChange = (v) => {
     setVoterName(v);
     const lower = v.trim().toLowerCase();
@@ -413,8 +551,8 @@ function MvpForm({ pollData, onRefresh }) {
 // ── Tally helpers ─────────────────────────────────────────────────────────────
 function tally(staff, votes) {
   return staff.map(m => {
-    const totals = {};       // { role: count }
-    const votersByRole = {}; // { role: [voterName, ...] }
+    const totals = {};
+    const votersByRole = {};
     let count = 0;
     for (const [voter, v] of Object.entries(votes)) {
       const role = v[m.username];
@@ -433,7 +571,7 @@ function tally(staff, votes) {
 function tallyMvp(candidates, votes, ranksKey, pointsArr) {
   const points = {};
   const voteCounts = {};
-  const voterDetails = {}; // { name: ["voter (#rank · Xpts)", ...] }
+  const voterDetails = {};
   for (const name of candidates) { points[name] = 0; voteCounts[name] = 0; voterDetails[name] = []; }
   for (const [voter, v] of Object.entries(votes)) {
     const ranks = v[ranksKey] || [];
@@ -451,10 +589,26 @@ function tallyMvp(candidates, votes, ranksKey, pointsArr) {
     .sort((a, b) => b.pts - a.pts);
 }
 
+function tallyApplicants(candidates, votes) {
+  const counts = {};
+  const voters = {};
+  for (const name of candidates) { counts[name] = 0; voters[name] = []; }
+  for (const [voter, v] of Object.entries(votes)) {
+    for (const name of (v.picks || [])) {
+      if (counts[name] !== undefined) { counts[name]++; voters[name].push(voter); }
+    }
+  }
+  const total = Object.values(counts).reduce((a, b) => a + b, 0);
+  return Object.entries(counts)
+    .map(([name, n]) => ({ name, count: n, voters: voters[name], pct: total ? Math.round((n / total) * 100) : 0 }))
+    .sort((a, b) => b.count - a.count);
+}
+
 // ── Results Panel ─────────────────────────────────────────────────────────────
 function ResultsPanel({ pollData }) {
   const [copied, setCopied] = useState(false);
   const [changes, setChanges] = useState("");
+  const [expandedFeedback, setExpandedFeedback] = useState(false);
   const tallied = tally(pollData.staff, pollData.votes);
   const allVoters = Object.keys(pollData.votes);
 
@@ -489,6 +643,11 @@ function ResultsPanel({ pollData }) {
     setCopied(true);
     setTimeout(() => setCopied(false), 2200);
   };
+
+  // Collect feedback entries: { voter, feedback }[]
+  const feedbackEntries = Object.entries(pollData.votes)
+    .map(([voter, v]) => ({ voter, feedback: v.__feedback__ }))
+    .filter(e => e.feedback && e.feedback.trim() && e.feedback.trim().toUpperCase() !== "N/A");
 
   return (
     <div>
@@ -525,7 +684,40 @@ function ResultsPanel({ pollData }) {
         </div>
       ))}
 
-      <div style={{ marginTop: 20, marginBottom: 16 }}>
+      {/* ── Feedback section ── */}
+      {feedbackEntries.length > 0 && (
+        <div style={{ marginTop: 20, marginBottom: 20 }}>
+          <button
+            onClick={() => setExpandedFeedback(e => !e)}
+            style={{
+              width: "100%", padding: "10px 14px", borderRadius: 8, cursor: "pointer",
+              background: "rgba(255,255,255,0.04)", border: "1px solid rgba(255,255,255,0.1)",
+              color: "#aaa", fontFamily: "'Cinzel',serif", fontWeight: 700, fontSize: 12,
+              letterSpacing: 1, display: "flex", alignItems: "center", justifyContent: "space-between",
+            }}
+          >
+            <span>💬 Voter Feedback ({feedbackEntries.length})</span>
+            <span>{expandedFeedback ? "▲" : "▼"}</span>
+          </button>
+          {expandedFeedback && (
+            <div style={{ marginTop: 8, display: "flex", flexDirection: "column", gap: 8 }}>
+              {feedbackEntries.map(({ voter, feedback }) => (
+                <div key={voter} style={{
+                  background: "rgba(255,255,255,0.02)", border: "1px solid rgba(255,255,255,0.07)",
+                  borderRadius: 8, padding: "10px 14px",
+                }}>
+                  <div style={{ fontSize: 11, color: "#f5c542", fontFamily: "'Cinzel',serif", marginBottom: 5 }}>
+                    {voter}
+                  </div>
+                  <div style={{ fontSize: 13, color: "#bbb", lineHeight: 1.6, whiteSpace: "pre-wrap" }}>{feedback}</div>
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
+      )}
+
+      <div style={{ marginTop: 8, marginBottom: 16 }}>
         <label style={labelStyle}>Changes (one per line)</label>
         <textarea value={changes} onChange={e => setChanges(e.target.value)} rows={4}
           placeholder={"C4rdZ to Support\nBaekhyeon to Support"}
@@ -547,12 +739,52 @@ function ResultsPanel({ pollData }) {
   );
 }
 
+// ── Applicant Results Panel ────────────────────────────────────────────────────
+function ApplicantResultsPanel({ pollData }) {
+  const applicants  = pollData.applicants || {};
+  const candidates  = applicants.candidates || [];
+  const appVotes    = pollData.applicantVotes || {};
+  const totalVoters = Object.keys(appVotes).length;
+  const results     = tallyApplicants(candidates, appVotes);
+
+  if (candidates.length === 0) return (
+    <div style={{ textAlign: "center", padding: "30px 0", color: "#555", fontSize: 14 }}>
+      No applicant candidates configured.
+    </div>
+  );
+
+  return (
+    <div>
+      <div style={{ marginBottom: 16 }}>
+        <Tooltip lines={totalVoters ? Object.keys(appVotes).map(v => `• ${v}`) : ["No votes yet"]}>
+          {totalVoters} vote(s) recorded
+        </Tooltip>
+      </div>
+      {results.map((r, i) => (
+        <div key={r.name} style={{ ...cardStyle, marginBottom: 8, display: "flex", alignItems: "center", gap: 12 }}>
+          <span style={{
+            fontFamily: "'Cinzel',serif", fontSize: 18,
+            color: i === 0 ? "#60a5fa" : "#555", width: 24, flexShrink: 0,
+          }}>
+            {i === 0 ? "★" : `${i + 1}`}
+          </span>
+          <span style={{ fontFamily: "'Cinzel',serif", color: "#e8d5a3", fontWeight: 700, flex: 1 }}>{r.name}</span>
+          <span style={{ color: "#60a5fa", fontWeight: 700, fontSize: 14, marginRight: 8 }}>{r.pct}%</span>
+          <Tooltip lines={r.voters.length ? r.voters.map(v => `• ${v}`) : ["No votes yet"]}>
+            {r.count} vote(s)
+          </Tooltip>
+        </div>
+      ))}
+    </div>
+  );
+}
+
 // ── MVP Results Panel ─────────────────────────────────────────────────────────
 function MvpResultsPanel({ pollData }) {
-  const mvp        = pollData.mvp || {};
-  const mvpVotes   = pollData.mvpVotes || {};
+  const mvp         = pollData.mvp || {};
+  const mvpVotes    = pollData.mvpVotes || {};
   const totalVoters = Object.keys(mvpVotes).length;
-  const monthLabel = mvp.month ? `${mvp.month} ` : "";
+  const monthLabel  = mvp.month ? `${mvp.month} ` : "";
   const staffResults = tallyMvp(mvp.staffCandidates || [], mvpVotes, "staffRanks", STAFF_POINTS);
   const adminResults = tallyMvp(mvp.adminCandidates || [], mvpVotes, "adminRanks", ADMIN_POINTS);
 
@@ -629,6 +861,7 @@ function SettingsPanel({ pollData, adminPassword, onRefresh }) {
   const [newUser, setNewUser]                 = useState("");
   const [newRole, setNewRole]                 = useState("Support");
   const mvp0 = pollData.mvp || {};
+  const app0 = pollData.applicants || {};
   const [mvpMonth, setMvpMonth]               = useState(mvp0.month || "");
   const [staffEnabled, setStaffEnabled]       = useState(!!mvp0.staffEnabled);
   const [adminEnabled, setAdminEnabled]       = useState(!!mvp0.adminEnabled);
@@ -636,6 +869,9 @@ function SettingsPanel({ pollData, adminPassword, onRefresh }) {
   const [adminCandidates, setAdminCandidates] = useState(mvp0.adminCandidates || []);
   const [newStaffName, setNewStaffName]       = useState("");
   const [newAdminName, setNewAdminName]       = useState("");
+  // Applicant settings
+  const [appCandidates, setAppCandidates]     = useState(app0.candidates || []);
+  const [newAppName, setNewAppName]           = useState("");
   const [saving, setSaving]                   = useState(false);
   const [msg, setMsg]                         = useState("");
 
@@ -645,7 +881,11 @@ function SettingsPanel({ pollData, adminPassword, onRefresh }) {
     setSaving(true); setMsg("");
     const res = await apiFetch("/api/admin/settings", {
       method: "PUT",
-      body: { adminPassword, pollNumber: Number(pollNumber), staff, mvp: { month: mvpMonth.trim(), staffEnabled, adminEnabled, staffCandidates, adminCandidates } },
+      body: {
+        adminPassword, pollNumber: Number(pollNumber), staff,
+        mvp: { month: mvpMonth.trim(), staffEnabled, adminEnabled, staffCandidates, adminCandidates },
+        applicants: { candidates: appCandidates },
+      },
     });
     setSaving(false);
     if (res.error) { setMsg("❌ " + res.error); return; }
@@ -659,6 +899,8 @@ function SettingsPanel({ pollData, adminPassword, onRefresh }) {
   const removeStaffCand = i  => setStaffCandidates(c => c.filter((_, idx) => idx !== i));
   const addAdminCand    = () => { if (!newAdminName.trim()) return; setAdminCandidates(c => [...c, newAdminName.trim()]); setNewAdminName(""); };
   const removeAdminCand = i  => setAdminCandidates(c => c.filter((_, idx) => idx !== i));
+  const addAppCand      = () => { if (!newAppName.trim()) return; setAppCandidates(c => [...c, newAppName.trim()]); setNewAppName(""); };
+  const removeAppCand   = i  => setAppCandidates(c => c.filter((_, idx) => idx !== i));
 
   return (
     <div>
@@ -666,6 +908,7 @@ function SettingsPanel({ pollData, adminPassword, onRefresh }) {
         <label style={labelStyle}>Poll Number</label>
         <input type="number" value={pollNumber} onChange={e => setPollNumber(e.target.value)} style={{ ...inputStyle, width: 100 }} />
       </div>
+
       <label style={labelStyle}>Staff Members</label>
       <div style={{ marginBottom: 16 }}>
         {staff.map((m, i) => (
@@ -687,6 +930,30 @@ function SettingsPanel({ pollData, adminPassword, onRefresh }) {
         <button onClick={addMember} style={addBtnStyle}>+ Add</button>
       </div>
 
+      {/* ── Applicants Settings ── */}
+      <div style={{ borderTop: "1px solid rgba(255,215,0,0.12)", paddingTop: 24, marginBottom: 8 }}>
+        <div style={{ fontFamily: "'Cinzel',serif", color: "#e8d5a3", fontSize: 15, fontWeight: 700, marginBottom: 18, letterSpacing: 1 }}>
+          📋 Staff Applicants
+        </div>
+        <div style={{ marginBottom: 10 }}>
+          {appCandidates.map((name, i) => (
+            <div key={i} style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 6 }}>
+              <span style={{ flex: 1, color: "#ccc", fontSize: 14, paddingLeft: 4 }}>{name}</span>
+              <button onClick={() => removeAppCand(i)} style={removeBtnStyle}>✕</button>
+            </div>
+          ))}
+          {appCandidates.length === 0 && (
+            <div style={{ color: "#555", fontSize: 13, paddingLeft: 4, marginBottom: 8 }}>No applicants listed yet.</div>
+          )}
+        </div>
+        <div style={{ display: "flex", gap: 8, marginBottom: 32 }}>
+          <input value={newAppName} onChange={e => setNewAppName(e.target.value)} placeholder="Add applicant name"
+            style={{ ...inputStyle, flex: 1 }} onKeyDown={e => e.key === "Enter" && addAppCand()} />
+          <button onClick={addAppCand} style={addBtnStyle}>+ Add</button>
+        </div>
+      </div>
+
+      {/* ── MVP Settings ── */}
       <div style={{ borderTop: "1px solid rgba(255,215,0,0.12)", paddingTop: 24, marginBottom: 8 }}>
         <div style={{ fontFamily: "'Cinzel',serif", color: "#e8d5a3", fontSize: 15, fontWeight: 700, marginBottom: 18, letterSpacing: 1 }}>
           🏆 MVP Poll Settings
@@ -793,14 +1060,15 @@ function AdminPanel({ pollData, onRefresh }) {
 
   return (
     <div>
-      <div style={{ display: "flex", gap: 6, marginBottom: 20 }}>
-        {[["results", "📊 Results"], ["mvp", "🏆 MVP"], ["settings", "⚙️ Settings"]].map(([k, label]) => (
+      <div style={{ display: "flex", gap: 6, marginBottom: 20, flexWrap: "wrap" }}>
+        {[["results", "📊 Results"], ["applicants", "📋 Applicants"], ["mvp", "🏆 MVP"], ["settings", "⚙️ Settings"]].map(([k, label]) => (
           <button key={k} onClick={() => setSubTab(k)} style={{
             flex: 1, padding: "9px", borderRadius: 8, border: "none",
             background: subTab === k ? "rgba(184,134,11,0.25)" : "rgba(255,255,255,0.04)",
             color: subTab === k ? "#ffd700" : "#777",
             fontFamily: "'Cinzel',serif", fontWeight: 700, fontSize: 11,
             cursor: "pointer", borderBottom: subTab === k ? "2px solid #b8860b" : "2px solid transparent",
+            minWidth: 70,
           }}>{label}</button>
         ))}
         <button onClick={reset} disabled={resetting} style={{
@@ -809,9 +1077,10 @@ function AdminPanel({ pollData, onRefresh }) {
           fontFamily: "'Cinzel',serif", fontWeight: 700, fontSize: 11, cursor: "pointer", flexShrink: 0,
         }}>{resetting ? "…" : "🔄"}</button>
       </div>
-      {subTab === "results"  && <ResultsPanel    pollData={pollData} />}
-      {subTab === "mvp"      && <MvpResultsPanel pollData={pollData} />}
-      {subTab === "settings" && <SettingsPanel   pollData={pollData} adminPassword={pw} onRefresh={onRefresh} />}
+      {subTab === "results"    && <ResultsPanel          pollData={pollData} />}
+      {subTab === "applicants" && <ApplicantResultsPanel pollData={pollData} />}
+      {subTab === "mvp"        && <MvpResultsPanel       pollData={pollData} />}
+      {subTab === "settings"   && <SettingsPanel         pollData={pollData} adminPassword={pw} onRefresh={onRefresh} />}
     </div>
   );
 }
@@ -845,10 +1114,18 @@ export default function App() {
   );
 
   const mvp = pollData.mvp || {};
+  const applicants = pollData.applicants || {};
   const showMvpTab  = mvp.staffEnabled || mvp.adminEnabled;
+  const showAppTab  = (applicants.candidates || []).length > 0;
   const monthLabel  = mvp.month ? `${mvp.month} ` : "";
   const mvpTabLabel = `🏆 ${monthLabel}MVP Poll`;
-  const tabs = [["vote", "⚔ Cast Vote"], ...(showMvpTab ? [["mvp", mvpTabLabel]] : []), ["admin", "👑 Admin"]];
+
+  const tabs = [
+    ["vote",       "⚔ Cast Vote"],
+    ...(showAppTab  ? [["applicants", "📋 Applicants"]] : []),
+    ...(showMvpTab  ? [["mvp",        mvpTabLabel]]     : []),
+    ["admin",      "👑 Admin"],
+  ];
 
   return (
     <>
@@ -884,9 +1161,10 @@ export default function App() {
             ))}
           </div>
           <div style={{ background: "rgba(255,255,255,0.03)", border: "1px solid rgba(255,215,0,.1)", borderRadius: 16, padding: "24px 20px", boxShadow: "0 20px 60px rgba(0,0,0,.5), inset 0 1px 0 rgba(255,215,0,.07)" }}>
-            {tab === "vote"  && <VotingForm pollData={pollData} onRefresh={load} />}
-            {tab === "mvp"   && <MvpForm   pollData={pollData} onRefresh={load} />}
-            {tab === "admin" && <AdminPanel pollData={pollData} onRefresh={load} />}
+            {tab === "vote"       && <VotingForm    pollData={pollData} onRefresh={load} />}
+            {tab === "applicants" && <ApplicantsForm pollData={pollData} onRefresh={load} />}
+            {tab === "mvp"        && <MvpForm        pollData={pollData} onRefresh={load} />}
+            {tab === "admin"      && <AdminPanel     pollData={pollData} onRefresh={load} />}
           </div>
         </div>
       </div>
