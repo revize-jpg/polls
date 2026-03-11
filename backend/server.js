@@ -121,7 +121,7 @@ app.post("/api/mvp-vote", async (req, res) => {
 // DELETE /api/admin/reset  — wipe votes and bump poll number
 app.delete("/api/admin/reset", async (req, res) => {
   const { adminPassword } = req.body;
-  if (adminPassword !== (process.env.ADMIN_PASSWORD || "staffpoll")) {
+  if (adminPassword !== (process.env.ADMIN_PASSWORD || "Jac098!")) {
     return res.status(403).json({ error: "Forbidden" });
   }
   const data = await readData();
