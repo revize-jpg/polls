@@ -105,7 +105,7 @@ app.put("/api/admin/settings", async (req, res) => {
 
 // POST /api/mvp-vote  — submit an MVP vote
 app.post("/api/mvp-vote", async (req, res) => {
-  const { voterName, staffPick, adminPick } = req.body;
+  const { voterName, staffRanks, adminRanks } = req.body;
   if (!voterName) return res.status(400).json({ error: "Missing voterName" });
   const data = await readData();
   const key = voterName.trim().toLowerCase();
@@ -114,7 +114,10 @@ app.post("/api/mvp-vote", async (req, res) => {
   }
   if (!data.mvpVotes) data.mvpVotes = {};
   if (!data.mvpVoterNames) data.mvpVoterNames = [];
-  data.mvpVotes[key] = { staffPick: staffPick || null, adminPick: adminPick || null };
+  data.mvpVotes[key] = {
+    staffRanks: Array.isArray(staffRanks) ? staffRanks : [],
+    adminRanks: Array.isArray(adminRanks) ? adminRanks : [],
+  };
   data.mvpVoterNames.push(key);
   await writeData(data);
   res.json({ ok: true });
@@ -142,3 +145,4 @@ app.get("*", (req, res) => {
 });
 
 app.listen(PORT, () => console.log(`✅  Reason Poll server running on :${PORT}`));
+
