@@ -32,6 +32,9 @@ const DEFAULT_DATA = {
   ],
   votes: {},       // { voterName: { staffUsername: "Role" } }
   voterNames: [],  // lowercase list for dupe detection
+  mvp: { staffEnabled: false, adminEnabled: false, staffCandidates: [], adminCandidates: [] },
+  mvpVotes: {},    // { voterName: { staffPick, adminPick } }
+  mvpVoterNames: [],
 };
 
 // ── Read / write helpers ──────────────────────────────────────────────────────
@@ -84,17 +87,35 @@ app.post("/api/vote", async (req, res) => {
 });
 
 // PUT /api/admin/settings  — update poll number and/or staff list
-// body: { adminPassword, pollNumber?, staff? }
+// body: { adminPassword, pollNumber?, staff?, mvp? }
 app.put("/api/admin/settings", async (req, res) => {
-  const { adminPassword, pollNumber, staff } = req.body;
+  const { adminPassword, pollNumber, staff, mvp } = req.body;
   if (adminPassword !== (process.env.ADMIN_PASSWORD || "staffpoll")) {
     return res.status(403).json({ error: "Forbidden" });
   }
   const data = await readData();
   if (pollNumber !== undefined) data.pollNumber = pollNumber;
   if (staff !== undefined) data.staff = staff;
+  if (mvp !== undefined) data.mvp = mvp;
   await writeData(data);
   res.json({ ok: true, data });
+});
+
+// POST /api/mvp-vote  — submit an MVP vote
+app.post("/api/mvp-vote", async (req, res) => {
+  const { voterName, staffPick, adminPick } = req.body;
+  if (!voterName) return res.status(400).json({ error: "Missing voterName" });
+  const data = await readData();
+  const key = voterName.trim().toLowerCase();
+  if ((data.mvpVoterNames || []).includes(key)) {
+    return res.status(409).json({ error: "You have already submitted an MVP vote." });
+  }
+  if (!data.mvpVotes) data.mvpVotes = {};
+  if (!data.mvpVoterNames) data.mvpVoterNames = [];
+  data.mvpVotes[key] = { staffPick: staffPick || null, adminPick: adminPick || null };
+  data.mvpVoterNames.push(key);
+  await writeData(data);
+  res.json({ ok: true });
 });
 
 // DELETE /api/admin/reset  — wipe votes and bump poll number
