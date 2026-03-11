@@ -5,6 +5,9 @@ const API = process.env.REACT_APP_API_URL || "";
 const ROLES = ["Demote", "Support", "Moderator", "Admin"];
 const ROLE_COLORS = { Demote: "#ff5555", Support: "#60a5fa", Moderator: "#a8b2c0", Admin: "#f5c542" };
 const ADMIN_PASSWORD = process.env.REACT_APP_ADMIN_PASSWORD || "Jac098!";
+const STAFF_POINTS = [3, 2, 1];
+const ADMIN_POINTS = [3, 2];
+const RANK_COLORS  = ["#f5c542", "#a8b2c0", "#cd7f32"];
 
 // ── API helpers ───────────────────────────────────────────────────────────────
 async function apiFetch(path, opts = {}) {
@@ -14,6 +17,41 @@ async function apiFetch(path, opts = {}) {
     body: opts.body ? JSON.stringify(opts.body) : undefined,
   });
   return res.json();
+}
+
+// ── Tooltip component ─────────────────────────────────────────────────────────
+function Tooltip({ children, lines }) {
+  const [show, setShow] = useState(false);
+  if (!lines || lines.length === 0) return <span>{children}</span>;
+  return (
+    <span
+      style={{ position: "relative", display: "inline-block", cursor: "help" }}
+      onMouseEnter={() => setShow(true)}
+      onMouseLeave={() => setShow(false)}
+    >
+      <span style={{ borderBottom: "1px dotted #555", color: "#888", fontSize: 11 }}>{children}</span>
+      {show && (
+        <div style={{
+          position: "absolute", bottom: "calc(100% + 6px)", right: 0,
+          background: "#1a1610", border: "1px solid rgba(255,215,0,0.2)",
+          borderRadius: 8, padding: "8px 12px", zIndex: 99,
+          minWidth: 140, boxShadow: "0 8px 24px rgba(0,0,0,0.6)",
+          whiteSpace: "nowrap",
+        }}>
+          {lines.map((l, i) => (
+            <div key={i} style={{ fontSize: 12, color: "#ccc", lineHeight: 1.7 }}>{l}</div>
+          ))}
+          <div style={{
+            position: "absolute", bottom: -5, right: 10,
+            width: 8, height: 8, background: "#1a1610",
+            border: "1px solid rgba(255,215,0,0.2)",
+            borderTop: "none", borderLeft: "none",
+            transform: "rotate(45deg)",
+          }} />
+        </div>
+      )}
+    </span>
+  );
 }
 
 // ── Small components ──────────────────────────────────────────────────────────
@@ -99,11 +137,16 @@ function VotingForm({ pollData, onRefresh }) {
   const [error, setError]         = useState("");
   const [loading, setLoading]     = useState(false);
 
-  const pick = (username, role) => setPicks(p => ({ ...p, [username]: role }));
-  const allPicked = pollData.staff.every(m => {
-    const isSelf = locked && voterName.trim().toLowerCase() === m.username.toLowerCase();
-    return isSelf || picks[m.username];
-  });
+  // FIX: isSelf always uses live voterName — even before lock
+  const isSelfFn = (username) =>
+    voterName.trim().toLowerCase() === username.toLowerCase() && voterName.trim() !== "";
+
+  const pick = (username, role) => {
+    if (isSelfFn(username)) return; // block even before lock
+    setPicks(p => ({ ...p, [username]: role }));
+  };
+
+  const allPicked = pollData.staff.every(m => isSelfFn(m.username) || picks[m.username]);
 
   const handleSubmit = async () => {
     if (!voterName.trim()) { setError("Please enter your username."); return; }
@@ -132,7 +175,7 @@ function VotingForm({ pollData, onRefresh }) {
     <div>
       <UsernameInput
         value={voterName} locked={locked}
-        onChange={setVoterName}
+        onChange={v => { setVoterName(v); setPicks(p => { const n = {...p}; delete n[v]; return n; }); }}
         onLock={() => voterName.trim() && setLocked(true)}
         onUnlock={() => setLocked(false)}
       />
@@ -141,7 +184,7 @@ function VotingForm({ pollData, onRefresh }) {
       </p>
 
       {pollData.staff.map(m => {
-        const isSelf = locked && voterName.trim().toLowerCase() === m.username.toLowerCase();
+        const isSelf = isSelfFn(m.username);
         return (
           <div key={m.username} style={{ ...cardStyle, position: "relative" }}>
             {isSelf && (
@@ -163,7 +206,7 @@ function VotingForm({ pollData, onRefresh }) {
               {ROLES.map(role => {
                 const selected = picks[m.username] === role;
                 return (
-                  <button key={role} onClick={() => !isSelf && pick(m.username, role)}
+                  <button key={role} onClick={() => pick(m.username, role)}
                     disabled={isSelf}
                     style={{
                       padding: "8px 18px", borderRadius: 8,
@@ -191,33 +234,35 @@ function VotingForm({ pollData, onRefresh }) {
 }
 
 // ── MVP Poll Form ─────────────────────────────────────────────────────────────
-// staffRanks: ["Name1", "Name2", "Name3"]  (index 0 = #1 pick = 3pts)
-// adminRanks: ["Name1", "Name2"]           (index 0 = #1 pick = 3pts)
-const STAFF_POINTS = [3, 2, 1];
-const ADMIN_POINTS = [3, 2];
-const RANK_COLORS  = ["#f5c542", "#a8b2c0", "#cd7f32"]; // gold, silver, bronze
-
 function MvpForm({ pollData, onRefresh }) {
-  const [voterName, setVoterName] = useState("");
-  const [locked, setLocked]       = useState(false);
-  const [staffRanks, setStaffRanks] = useState([]); // ordered array of names
+  const [voterName, setVoterName]   = useState("");
+  const [locked, setLocked]         = useState(false);
+  const [staffRanks, setStaffRanks] = useState([]);
   const [adminRanks, setAdminRanks] = useState([]);
-  const [submitted, setSubmitted] = useState(false);
-  const [error, setError]         = useState("");
-  const [loading, setLoading]     = useState(false);
+  const [submitted, setSubmitted]   = useState(false);
+  const [error, setError]           = useState("");
+  const [loading, setLoading]       = useState(false);
 
-  const lowerVoter = voterName.trim().toLowerCase();
-  const mvp = pollData.mvp || {};
+  const mvp        = pollData.mvp || {};
+  const monthLabel = mvp.month ? `${mvp.month} ` : "";
+
+  // FIX: isSelf works before lock too
+  const isSelfFn = (name) =>
+    voterName.trim().toLowerCase() === name.toLowerCase() && voterName.trim() !== "";
 
   const handleRankClick = (name, ranks, setRanks, maxPicks) => {
+    if (isSelfFn(name)) return;
     const idx = ranks.indexOf(name);
-    if (idx !== -1) {
-      // already picked — remove it and shift everything after it up
-      setRanks(ranks.filter((_, i) => i !== idx));
-    } else if (ranks.length < maxPicks) {
-      // not yet picked and slots remain — add to end
-      setRanks([...ranks, name]);
-    }
+    if (idx !== -1) setRanks(ranks.filter((_, i) => i !== idx));
+    else if (ranks.length < maxPicks) setRanks([...ranks, name]);
+  };
+
+  // When name changes, strip self from any existing rank arrays
+  const handleNameChange = (v) => {
+    setVoterName(v);
+    const lower = v.trim().toLowerCase();
+    setStaffRanks(r => r.filter(n => n.toLowerCase() !== lower));
+    setAdminRanks(r => r.filter(n => n.toLowerCase() !== lower));
   };
 
   const handleSubmit = async () => {
@@ -245,16 +290,15 @@ function MvpForm({ pollData, onRefresh }) {
   );
 
   const RankBtn = ({ name, ranks, setRanks, maxPicks, pointsArr }) => {
-    const isSelf  = locked && lowerVoter === name.toLowerCase();
+    const isSelf  = isSelfFn(name);
     const rankIdx = ranks.indexOf(name);
     const picked  = rankIdx !== -1;
-    const rank    = rankIdx + 1; // 1-based display
+    const rank    = rankIdx + 1;
     const full    = !picked && ranks.length >= maxPicks;
     const color   = picked ? RANK_COLORS[rankIdx] : null;
-
     return (
       <button
-        onClick={() => !isSelf && handleRankClick(name, ranks, setRanks, maxPicks)}
+        onClick={() => handleRankClick(name, ranks, setRanks, maxPicks)}
         disabled={isSelf || full}
         style={{
           padding: "11px 18px", borderRadius: 9, textAlign: "left",
@@ -289,19 +333,18 @@ function MvpForm({ pollData, onRefresh }) {
     <div>
       <UsernameInput
         value={voterName} locked={locked}
-        onChange={setVoterName}
+        onChange={handleNameChange}
         onLock={() => voterName.trim() && setLocked(true)}
         onUnlock={() => { setLocked(false); setStaffRanks([]); setAdminRanks([]); }}
       />
 
       {mvp.staffEnabled && (
         <div style={{ marginBottom: 28 }}>
-          <div style={sectionHeaderStyle}>⭐ Staff MVP</div>
+          <div style={sectionHeaderStyle}>⭐ {monthLabel}Staff MVP</div>
           <p style={{ color: "#666", fontSize: 13, marginBottom: 14 }}>
             Rank up to <strong style={{ color: "#ccc" }}>3 staff members</strong>. #1 = 3pts, #2 = 2pts, #3 = 1pt.
             Click a selected name again to deselect.
           </p>
-          {/* rank summary chips */}
           <div style={{ display: "flex", gap: 8, marginBottom: 14, minHeight: 28 }}>
             {[0,1,2].map(i => (
               <div key={i} style={{
@@ -324,12 +367,11 @@ function MvpForm({ pollData, onRefresh }) {
 
       {mvp.adminEnabled && (
         <div style={{ marginBottom: 28 }}>
-          <div style={sectionHeaderStyle}>👑 Admin MVP</div>
+          <div style={sectionHeaderStyle}>👑 {monthLabel}Admin MVP</div>
           <p style={{ color: "#666", fontSize: 13, marginBottom: 14 }}>
             Rank up to <strong style={{ color: "#ccc" }}>2 admins</strong>. #1 = 3pts, #2 = 2pts.
             Click a selected name again to deselect.
           </p>
-          {/* rank summary chips */}
           <div style={{ display: "flex", gap: 8, marginBottom: 14, minHeight: 28 }}>
             {[0,1].map(i => (
               <div key={i} style={{
@@ -360,7 +402,7 @@ function MvpForm({ pollData, onRefresh }) {
         <>
           {error && <div style={errorStyle}>⚠ {error}</div>}
           <button onClick={handleSubmit} disabled={loading} style={submitBtnStyle}>
-            {loading ? "Submitting…" : "Submit MVP Vote"}
+            {loading ? "Submitting…" : `Submit ${monthLabel}MVP Vote`}
           </button>
         </>
       )}
@@ -371,36 +413,41 @@ function MvpForm({ pollData, onRefresh }) {
 // ── Tally helpers ─────────────────────────────────────────────────────────────
 function tally(staff, votes) {
   return staff.map(m => {
-    const totals = {};
+    const totals = {};       // { role: count }
+    const votersByRole = {}; // { role: [voterName, ...] }
     let count = 0;
-    for (const v of Object.values(votes)) {
+    for (const [voter, v] of Object.entries(votes)) {
       const role = v[m.username];
       if (!role) continue;
       count++;
       totals[role] = (totals[role] || 0) + 1;
+      if (!votersByRole[role]) votersByRole[role] = [];
+      votersByRole[role].push(voter);
     }
     const pcts = {};
     for (const [r, n] of Object.entries(totals)) pcts[r] = Math.round((n / count) * 100);
-    return { ...m, pcts, count };
+    return { ...m, pcts, count, votersByRole };
   });
 }
 
 function tallyMvp(candidates, votes, ranksKey, pointsArr) {
   const points = {};
   const voteCounts = {};
-  for (const name of candidates) { points[name] = 0; voteCounts[name] = 0; }
-  for (const v of Object.values(votes)) {
+  const voterDetails = {}; // { name: ["voter (#rank · Xpts)", ...] }
+  for (const name of candidates) { points[name] = 0; voteCounts[name] = 0; voterDetails[name] = []; }
+  for (const [voter, v] of Object.entries(votes)) {
     const ranks = v[ranksKey] || [];
     ranks.forEach((name, idx) => {
       if (points[name] !== undefined) {
         points[name] += pointsArr[idx] || 0;
         voteCounts[name]++;
+        voterDetails[name].push(`${voter} (#${idx+1} · ${pointsArr[idx]}pt${pointsArr[idx]!==1?"s":""})`);
       }
     });
   }
   const totalPts = Object.values(points).reduce((a, b) => a + b, 0);
   return Object.entries(points)
-    .map(([name, pts]) => ({ name, pts, votes: voteCounts[name], pct: totalPts ? Math.round((pts / totalPts) * 100) : 0 }))
+    .map(([name, pts]) => ({ name, pts, votes: voteCounts[name], voterDetails: voterDetails[name], pct: totalPts ? Math.round((pts / totalPts) * 100) : 0 }))
     .sort((a, b) => b.pts - a.pts);
 }
 
@@ -409,6 +456,7 @@ function ResultsPanel({ pollData }) {
   const [copied, setCopied] = useState(false);
   const [changes, setChanges] = useState("");
   const tallied = tally(pollData.staff, pollData.votes);
+  const allVoters = Object.keys(pollData.votes);
 
   const byRole = {};
   for (const m of tallied) {
@@ -444,15 +492,25 @@ function ResultsPanel({ pollData }) {
 
   return (
     <div>
-      <div style={{ marginBottom: 16 }}>
-        <span style={{ color: "#888", fontSize: 13 }}>{Object.keys(pollData.votes).length} vote(s) recorded</span>
+      <div style={{ marginBottom: 16, display: "flex", alignItems: "center", gap: 10 }}>
+        <Tooltip lines={allVoters.length ? allVoters.map(v => `• ${v}`) : ["No votes yet"]}>
+          {allVoters.length} vote(s) recorded
+        </Tooltip>
       </div>
+
       {tallied.map(m => (
         <div key={m.username} style={{ ...cardStyle, marginBottom: 10 }}>
           <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 8 }}>
             <span style={{ fontFamily: "'Cinzel',serif", color: "#e8d5a3", fontWeight: 700 }}>@{m.username}</span>
             <RoleBadge role={m.currentRole} />
-            <span style={{ marginLeft: "auto", color: "#555", fontSize: 11 }}>{m.count} vote(s)</span>
+            <span style={{ marginLeft: "auto" }}>
+              <Tooltip lines={m.count ? allVoters.map(v => {
+                const role = (pollData.votes[v] || {})[m.username];
+                return role ? `${v} → ${role}` : null;
+              }).filter(Boolean) : ["No votes yet"]}>
+                {m.count} vote(s)
+              </Tooltip>
+            </span>
           </div>
           <div style={{ display: "flex", flexWrap: "wrap", gap: 6 }}>
             {Object.entries(m.pcts).filter(([, v]) => v > 0).sort((a, b) => b[1] - a[1]).map(([role, pct]) => (
@@ -466,6 +524,7 @@ function ResultsPanel({ pollData }) {
           </div>
         </div>
       ))}
+
       <div style={{ marginTop: 20, marginBottom: 16 }}>
         <label style={labelStyle}>Changes (one per line)</label>
         <textarea value={changes} onChange={e => setChanges(e.target.value)} rows={4}
@@ -490,43 +549,50 @@ function ResultsPanel({ pollData }) {
 
 // ── MVP Results Panel ─────────────────────────────────────────────────────────
 function MvpResultsPanel({ pollData }) {
-  const mvp = pollData.mvp || {};
-  const mvpVotes = pollData.mvpVotes || {};
+  const mvp        = pollData.mvp || {};
+  const mvpVotes   = pollData.mvpVotes || {};
   const totalVoters = Object.keys(mvpVotes).length;
+  const monthLabel = mvp.month ? `${mvp.month} ` : "";
   const staffResults = tallyMvp(mvp.staffCandidates || [], mvpVotes, "staffRanks", STAFF_POINTS);
   const adminResults = tallyMvp(mvp.adminCandidates || [], mvpVotes, "adminRanks", ADMIN_POINTS);
 
   return (
     <div>
       <div style={{ marginBottom: 16 }}>
-        <span style={{ color: "#888", fontSize: 13 }}>{totalVoters} MVP vote(s) recorded</span>
+        <Tooltip lines={totalVoters ? Object.keys(mvpVotes).map(v => `• ${v}`) : ["No votes yet"]}>
+          {totalVoters} MVP vote(s) recorded
+        </Tooltip>
       </div>
       {mvp.staffEnabled && (
         <div style={{ marginBottom: 24 }}>
-          <div style={sectionHeaderStyle}>⭐ Staff MVP</div>
+          <div style={sectionHeaderStyle}>⭐ {monthLabel}Staff MVP</div>
           {staffResults.map((r, i) => (
             <div key={r.name} style={{ ...cardStyle, marginBottom: 8, display: "flex", alignItems: "center", gap: 12 }}>
               <span style={{ fontFamily: "'Cinzel',serif", fontSize: 18, color: RANK_COLORS[i] || "#555", width: 24, flexShrink: 0 }}>
                 {i === 0 ? "★" : `${i + 1}`}
               </span>
               <span style={{ fontFamily: "'Cinzel',serif", color: "#e8d5a3", fontWeight: 700, flex: 1 }}>{r.name}</span>
-              <span style={{ color: "#f5c542", fontWeight: 700, fontSize: 14 }}>{r.pts} pts</span>
-              <span style={{ color: "#555", fontSize: 11 }}>{r.votes} vote(s)</span>
+              <span style={{ color: "#f5c542", fontWeight: 700, fontSize: 14, marginRight: 8 }}>{r.pts} pts</span>
+              <Tooltip lines={r.voterDetails.length ? r.voterDetails.map(d => `• ${d}`) : ["No votes yet"]}>
+                {r.votes} vote(s)
+              </Tooltip>
             </div>
           ))}
         </div>
       )}
       {mvp.adminEnabled && (
         <div style={{ marginBottom: 24 }}>
-          <div style={sectionHeaderStyle}>👑 Admin MVP</div>
+          <div style={sectionHeaderStyle}>👑 {monthLabel}Admin MVP</div>
           {adminResults.map((r, i) => (
             <div key={r.name} style={{ ...cardStyle, marginBottom: 8, display: "flex", alignItems: "center", gap: 12 }}>
               <span style={{ fontFamily: "'Cinzel',serif", fontSize: 18, color: RANK_COLORS[i] || "#555", width: 24, flexShrink: 0 }}>
                 {i === 0 ? "★" : `${i + 1}`}
               </span>
               <span style={{ fontFamily: "'Cinzel',serif", color: "#e8d5a3", fontWeight: 700, flex: 1 }}>{r.name}</span>
-              <span style={{ color: "#f5c542", fontWeight: 700, fontSize: 14 }}>{r.pts} pts</span>
-              <span style={{ color: "#555", fontSize: 11 }}>{r.votes} vote(s)</span>
+              <span style={{ color: "#f5c542", fontWeight: 700, fontSize: 14, marginRight: 8 }}>{r.pts} pts</span>
+              <Tooltip lines={r.voterDetails.length ? r.voterDetails.map(d => `• ${d}`) : ["No votes yet"]}>
+                {r.votes} vote(s)
+              </Tooltip>
             </div>
           ))}
         </div>
@@ -558,25 +624,28 @@ function ToggleSwitch({ value, onChange }) {
 
 // ── Admin Settings Panel ──────────────────────────────────────────────────────
 function SettingsPanel({ pollData, adminPassword, onRefresh }) {
-  const [pollNumber, setPollNumber]             = useState(pollData.pollNumber);
-  const [staff, setStaff]                       = useState(pollData.staff.map(m => ({ ...m })));
-  const [newUser, setNewUser]                   = useState("");
-  const [newRole, setNewRole]                   = useState("Support");
+  const [pollNumber, setPollNumber]           = useState(pollData.pollNumber);
+  const [staff, setStaff]                     = useState(pollData.staff.map(m => ({ ...m })));
+  const [newUser, setNewUser]                 = useState("");
+  const [newRole, setNewRole]                 = useState("Support");
   const mvp0 = pollData.mvp || {};
-  const [staffEnabled, setStaffEnabled]         = useState(!!mvp0.staffEnabled);
-  const [adminEnabled, setAdminEnabled]         = useState(!!mvp0.adminEnabled);
-  const [staffCandidates, setStaffCandidates]   = useState(mvp0.staffCandidates || []);
-  const [adminCandidates, setAdminCandidates]   = useState(mvp0.adminCandidates || []);
-  const [newStaffName, setNewStaffName]         = useState("");
-  const [newAdminName, setNewAdminName]         = useState("");
-  const [saving, setSaving]                     = useState(false);
-  const [msg, setMsg]                           = useState("");
+  const [mvpMonth, setMvpMonth]               = useState(mvp0.month || "");
+  const [staffEnabled, setStaffEnabled]       = useState(!!mvp0.staffEnabled);
+  const [adminEnabled, setAdminEnabled]       = useState(!!mvp0.adminEnabled);
+  const [staffCandidates, setStaffCandidates] = useState(mvp0.staffCandidates || []);
+  const [adminCandidates, setAdminCandidates] = useState(mvp0.adminCandidates || []);
+  const [newStaffName, setNewStaffName]       = useState("");
+  const [newAdminName, setNewAdminName]       = useState("");
+  const [saving, setSaving]                   = useState(false);
+  const [msg, setMsg]                         = useState("");
+
+  const monthPreview = mvpMonth.trim() ? `${mvpMonth.trim()} ` : "";
 
   const save = async () => {
     setSaving(true); setMsg("");
     const res = await apiFetch("/api/admin/settings", {
       method: "PUT",
-      body: { adminPassword, pollNumber: Number(pollNumber), staff, mvp: { staffEnabled, adminEnabled, staffCandidates, adminCandidates } },
+      body: { adminPassword, pollNumber: Number(pollNumber), staff, mvp: { month: mvpMonth.trim(), staffEnabled, adminEnabled, staffCandidates, adminCandidates } },
     });
     setSaving(false);
     if (res.error) { setMsg("❌ " + res.error); return; }
@@ -597,7 +666,6 @@ function SettingsPanel({ pollData, adminPassword, onRefresh }) {
         <label style={labelStyle}>Poll Number</label>
         <input type="number" value={pollNumber} onChange={e => setPollNumber(e.target.value)} style={{ ...inputStyle, width: 100 }} />
       </div>
-
       <label style={labelStyle}>Staff Members</label>
       <div style={{ marginBottom: 16 }}>
         {staff.map((m, i) => (
@@ -619,13 +687,23 @@ function SettingsPanel({ pollData, adminPassword, onRefresh }) {
         <button onClick={addMember} style={addBtnStyle}>+ Add</button>
       </div>
 
-      {/* MVP Settings */}
       <div style={{ borderTop: "1px solid rgba(255,215,0,0.12)", paddingTop: 24, marginBottom: 8 }}>
         <div style={{ fontFamily: "'Cinzel',serif", color: "#e8d5a3", fontSize: 15, fontWeight: 700, marginBottom: 18, letterSpacing: 1 }}>
           🏆 MVP Poll Settings
         </div>
+        <div style={{ marginBottom: 22 }}>
+          <label style={labelStyle}>Month</label>
+          <input value={mvpMonth} onChange={e => setMvpMonth(e.target.value)} placeholder="e.g. March"
+            style={{ ...inputStyle, width: "100%" }} />
+          {mvpMonth.trim() && (
+            <div style={{ marginTop: 8, fontSize: 12, color: "#888" }}>
+              Preview: <span style={{ color: "#f5c542" }}>{monthPreview}MVP Poll</span>
+              {" · "}<span style={{ color: "#a8b2c0" }}>{monthPreview}Staff MVP</span>
+              {" · "}<span style={{ color: "#a8b2c0" }}>{monthPreview}Admin MVP</span>
+            </div>
+          )}
+        </div>
 
-        {/* Staff MVP toggle + candidates */}
         <div style={{ marginBottom: 24 }}>
           <div style={{ display: "flex", alignItems: "center", gap: 12, marginBottom: 14 }}>
             <label style={{ ...labelStyle, marginBottom: 0 }}>Staff MVP Section</label>
@@ -652,7 +730,6 @@ function SettingsPanel({ pollData, adminPassword, onRefresh }) {
           )}
         </div>
 
-        {/* Admin MVP toggle + candidates */}
         <div style={{ marginBottom: 24 }}>
           <div style={{ display: "flex", alignItems: "center", gap: 12, marginBottom: 14 }}>
             <label style={{ ...labelStyle, marginBottom: 0 }}>Admin MVP Section</label>
@@ -768,8 +845,10 @@ export default function App() {
   );
 
   const mvp = pollData.mvp || {};
-  const showMvpTab = mvp.staffEnabled || mvp.adminEnabled;
-  const tabs = [["vote", "⚔ Cast Vote"], ...(showMvpTab ? [["mvp", "🏆 MVP Poll"]] : []), ["admin", "👑 Admin"]];
+  const showMvpTab  = mvp.staffEnabled || mvp.adminEnabled;
+  const monthLabel  = mvp.month ? `${mvp.month} ` : "";
+  const mvpTabLabel = `🏆 ${monthLabel}MVP Poll`;
+  const tabs = [["vote", "⚔ Cast Vote"], ...(showMvpTab ? [["mvp", mvpTabLabel]] : []), ["admin", "👑 Admin"]];
 
   return (
     <>
@@ -814,5 +893,3 @@ export default function App() {
     </>
   );
 }
-
-
