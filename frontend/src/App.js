@@ -2,8 +2,8 @@ import { useState, useEffect, useCallback } from "react";
 
 // ── Config ────────────────────────────────────────────────────────────────────
 const API = process.env.REACT_APP_API_URL || "";
-const ROLES = ["Support", "Moderator", "Admin"];
-const ROLE_COLORS = { Support: "#4ade80", Moderator: "#60a5fa", Admin: "#f59e0b" };
+const ROLES = ["Demote", "Support", "Moderator", "Admin"];
+const ROLE_COLORS = { Demote: "#ff5555", Support: "#60a5fa", Moderator: "#a8b2c0", Admin: "#f5c542" };
 const ADMIN_PASSWORD = process.env.REACT_APP_ADMIN_PASSWORD || "Jac098!";
 
 // ── API helpers ───────────────────────────────────────────────────────────────
@@ -89,7 +89,7 @@ function VotingForm({ pollData, onRefresh }) {
       <div style={{ marginBottom: 22 }}>
         <label style={labelStyle}>Your Username</label>
         <input value={voterName} onChange={e => setVoterName(e.target.value)}
-          placeholder="e.g. kookie0420" style={inputStyle} />
+          placeholder="e.g. K o o k i e" style={inputStyle} />
       </div>
 
       <p style={{ color: "#666", fontSize: 13, marginBottom: 18 }}>
@@ -101,7 +101,7 @@ function VotingForm({ pollData, onRefresh }) {
         <div key={m.username} style={cardStyle}>
           <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 12 }}>
             <span style={{ fontFamily: "'Cinzel',serif", fontWeight: 700, fontSize: 15, color: "#e8d5a3" }}>
-              @{m.username}
+              {m.username}
             </span>
             <RoleBadge role={m.currentRole} />
           </div>
