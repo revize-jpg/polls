@@ -20,23 +20,26 @@ if (fs.existsSync(FRONTEND_BUILD)) {
 const DEFAULT_DATA = {
   pollNumber: 29,
   staff: [
-    { username: "I D C", currentRole: "Support" },
-    { username: "C4rdZ",   currentRole: "Support" },
-    { username: "Baekhyeon",   currentRole: "Support" },
-    { username: "Rg A",    currentRole: "Moderator" },
+    { username: "I D C",      currentRole: "Support" },
+    { username: "C4rdZ",      currentRole: "Support" },
+    { username: "Baekhyeon",  currentRole: "Support" },
+    { username: "Rg A",       currentRole: "Moderator" },
     { username: "Roadblock",  currentRole: "Moderator" },
-    { username: "Rutte 95", currentRole: "Moderator" },
-    { username: "Sky H",    currentRole: "Moderator" },
-    { username: "K o o k i e",     currentRole: "Admin" },
-    { username: "Bustable",     currentRole: "Admin" },
-    { username: "Nois",     currentRole: "Admin" },
-    { username: "Pinecone",    currentRole: "Admin" },
+    { username: "Rutte 95",   currentRole: "Moderator" },
+    { username: "Sky H",      currentRole: "Moderator" },
+    { username: "K o o k i e", currentRole: "Admin" },
+    { username: "Bustable",   currentRole: "Admin" },
+    { username: "Nois",       currentRole: "Admin" },
+    { username: "Pinecone",   currentRole: "Admin" },
   ],
-  votes: {},       // { voterName: { staffUsername: "Role" } }
-  voterNames: [],  // lowercase list for dupe detection
+  votes: {},
+  voterNames: [],
   mvp: { staffEnabled: false, adminEnabled: false, staffCandidates: [], adminCandidates: [] },
-  mvpVotes: {},    // { voterName: { staffPick, adminPick } }
+  mvpVotes: {},
   mvpVoterNames: [],
+  applicants: { candidates: [] },
+  applicantVotes: {},
+  applicantVoterNames: [],
 };
 
 // ── Read / write helpers ──────────────────────────────────────────────────────
@@ -62,10 +65,10 @@ app.get("/api/poll", async (req, res) => {
   res.json(data);
 });
 
-// POST /api/vote  — submit a vote
-// body: { voterName: string, votes: { staffUsername: "Role" } }
+// POST /api/vote  — submit a staff poll vote
+// body: { voterName, votes: { staffUsername: "Role" }, feedback }
 app.post("/api/vote", async (req, res) => {
-  const { voterName, votes } = req.body;
+  const { voterName, votes, feedback } = req.body;
   if (!voterName || !votes) return res.status(400).json({ error: "Missing fields" });
 
   const data = await readData();
@@ -75,33 +78,33 @@ app.post("/api/vote", async (req, res) => {
     return res.status(409).json({ error: "Already voted" });
   }
 
-  // Validate every staff member has a vote, excluding the voter
-for (const m of data.staff) {
-  // Skip the voter
-  if (m.username.toLowerCase() === key) continue;
-  
-  if (!votes[m.username]) {
-    return res.status(400).json({ error: `Missing vote for ${m.username}` });
+  // Validate every staff member (except self) has a vote
+  for (const m of data.staff) {
+    if (m.username.toLowerCase() === key) continue;
+    if (!votes[m.username]) {
+      return res.status(400).json({ error: `Missing vote for ${m.username}` });
+    }
   }
-}
 
-  data.votes[key] = votes;
+  // Store feedback as a special key inside the votes object
+  data.votes[key] = { ...votes, __feedback__: (feedback || "").trim() };
   data.voterNames.push(key);
   await writeData(data);
   res.json({ ok: true });
 });
 
-// PUT /api/admin/settings  — update poll number and/or staff list
-// body: { adminPassword, pollNumber?, staff?, mvp? }
+// PUT /api/admin/settings  — update settings
+// body: { adminPassword, pollNumber?, staff?, mvp?, applicants? }
 app.put("/api/admin/settings", async (req, res) => {
-  const { adminPassword, pollNumber, staff, mvp } = req.body;
-  if (adminPassword !== (process.env.ADMIN_PASSWORD || "Jac098")) {
+  const { adminPassword, pollNumber, staff, mvp, applicants } = req.body;
+  if (adminPassword !== (process.env.ADMIN_PASSWORD || "Jac098!")) {
     return res.status(403).json({ error: "Forbidden" });
   }
   const data = await readData();
-  if (pollNumber !== undefined) data.pollNumber = pollNumber;
-  if (staff !== undefined) data.staff = staff;
-  if (mvp !== undefined) data.mvp = mvp;
+  if (pollNumber  !== undefined) data.pollNumber  = pollNumber;
+  if (staff       !== undefined) data.staff       = staff;
+  if (mvp         !== undefined) data.mvp         = mvp;
+  if (applicants  !== undefined) data.applicants  = applicants;
   await writeData(data);
   res.json({ ok: true, data });
 });
@@ -115,13 +118,33 @@ app.post("/api/mvp-vote", async (req, res) => {
   if ((data.mvpVoterNames || []).includes(key)) {
     return res.status(409).json({ error: "You have already submitted an MVP vote." });
   }
-  if (!data.mvpVotes) data.mvpVotes = {};
+  if (!data.mvpVotes)      data.mvpVotes      = {};
   if (!data.mvpVoterNames) data.mvpVoterNames = [];
   data.mvpVotes[key] = {
     staffRanks: Array.isArray(staffRanks) ? staffRanks : [],
     adminRanks: Array.isArray(adminRanks) ? adminRanks : [],
   };
   data.mvpVoterNames.push(key);
+  await writeData(data);
+  res.json({ ok: true });
+});
+
+// POST /api/applicant-vote  — submit an applicant vote
+// body: { voterName, picks: ["Name1", "Name2", ...] }
+app.post("/api/applicant-vote", async (req, res) => {
+  const { voterName, picks } = req.body;
+  if (!voterName || !Array.isArray(picks) || picks.length === 0) {
+    return res.status(400).json({ error: "Missing voterName or picks" });
+  }
+  const data = await readData();
+  const key = voterName.trim().toLowerCase();
+  if ((data.applicantVoterNames || []).includes(key)) {
+    return res.status(409).json({ error: "You have already submitted an applicant vote." });
+  }
+  if (!data.applicantVotes)      data.applicantVotes      = {};
+  if (!data.applicantVoterNames) data.applicantVoterNames = [];
+  data.applicantVotes[key] = { picks };
+  data.applicantVoterNames.push(key);
   await writeData(data);
   res.json({ ok: true });
 });
@@ -134,8 +157,12 @@ app.delete("/api/admin/reset", async (req, res) => {
   }
   const data = await readData();
   data.pollNumber += 1;
-  data.votes = {};
-  data.voterNames = [];
+  data.votes              = {};
+  data.voterNames         = [];
+  data.mvpVotes           = {};
+  data.mvpVoterNames      = [];
+  data.applicantVotes     = {};
+  data.applicantVoterNames = [];
   await writeData(data);
   res.json({ ok: true, data });
 });
@@ -148,4 +175,3 @@ app.get("*", (req, res) => {
 });
 
 app.listen(PORT, () => console.log(`✅  Reason Poll server running on :${PORT}`));
-
