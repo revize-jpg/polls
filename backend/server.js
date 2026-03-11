@@ -92,7 +92,7 @@ app.post("/api/vote", async (req, res) => {
 // body: { adminPassword, pollNumber?, staff?, mvp? }
 app.put("/api/admin/settings", async (req, res) => {
   const { adminPassword, pollNumber, staff, mvp } = req.body;
-  if (adminPassword !== (process.env.ADMIN_PASSWORD || "staffpoll")) {
+  if (adminPassword !== (process.env.ADMIN_PASSWORD || "Jac098")) {
     return res.status(403).json({ error: "Forbidden" });
   }
   const data = await readData();
