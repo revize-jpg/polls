@@ -9,6 +9,15 @@ const STAFF_POINTS = [3, 2, 1];
 const ADMIN_POINTS = [3, 2];
 const RANK_COLORS  = ["#f5c542", "#a8b2c0", "#cd7f32"];
 
+// ── Role color helper (handles custom roles) ──────────────────────────────────
+function getRoleColor(role) {
+  if (ROLE_COLORS[role]) return ROLE_COLORS[role];
+  const colours = ["#c084fc", "#34d399", "#fb923c", "#f472b6", "#38bdf8", "#a3e635", "#e879f9"];
+  let hash = 0;
+  for (let i = 0; i < role.length; i++) hash = role.charCodeAt(i) + ((hash << 5) - hash);
+  return colours[Math.abs(hash) % colours.length];
+}
+
 // ── API helpers ───────────────────────────────────────────────────────────────
 async function apiFetch(path, opts = {}) {
   const res = await fetch(API + path, {
@@ -56,12 +65,13 @@ function Tooltip({ children, lines }) {
 
 // ── Small components ──────────────────────────────────────────────────────────
 function RoleBadge({ role }) {
+  const color = getRoleColor(role);
   return (
     <span style={{
       display: "inline-block", padding: "2px 10px", borderRadius: 4,
       fontSize: 11, fontWeight: 700, letterSpacing: 1, textTransform: "uppercase",
-      background: `${ROLE_COLORS[role] || "#888"}22`, color: ROLE_COLORS[role] || "#888",
-      border: `1px solid ${ROLE_COLORS[role] || "#888"}55`,
+      background: `${color}22`, color: color,
+      border: `1px solid ${color}55`,
     }}>{role}</span>
   );
 }
@@ -186,6 +196,8 @@ function VotingForm({ pollData, onRefresh }) {
 
       {pollData.staff.map(m => {
         const isSelf = isSelfFn(m.username);
+        // Use member's custom options if set, otherwise fall back to global ROLES
+        const voteOptions = (m.voteOptions && m.voteOptions.length > 0) ? m.voteOptions : ROLES;
         return (
           <div key={m.username} style={{ ...cardStyle, position: "relative" }}>
             {isSelf && (
@@ -204,20 +216,21 @@ function VotingForm({ pollData, onRefresh }) {
               <RoleBadge role={m.currentRole} />
             </div>
             <div style={{ display: "flex", gap: 10, flexWrap: "wrap", opacity: isSelf ? 0.3 : 1 }}>
-              {ROLES.map(role => {
+              {voteOptions.map(role => {
                 const selected = picks[m.username] === role;
+                const color = getRoleColor(role);
                 return (
                   <button key={role} onClick={() => pick(m.username, role)}
                     disabled={isSelf}
                     style={{
                       padding: "8px 18px", borderRadius: 8,
-                      border: `2px solid ${selected ? ROLE_COLORS[role] : "rgba(255,255,255,0.1)"}`,
-                      background: selected ? `${ROLE_COLORS[role]}22` : "rgba(255,255,255,0.03)",
-                      color: selected ? ROLE_COLORS[role] : "#888",
+                      border: `2px solid ${selected ? color : "rgba(255,255,255,0.1)"}`,
+                      background: selected ? `${color}22` : "rgba(255,255,255,0.03)",
+                      color: selected ? color : "#888",
                       fontFamily: "'Cinzel',serif", fontWeight: 700, fontSize: 12,
                       cursor: isSelf ? "not-allowed" : "pointer", letterSpacing: 1,
                       transition: "all 0.15s",
-                      boxShadow: selected ? `0 0 12px ${ROLE_COLORS[role]}44` : "none",
+                      boxShadow: selected ? `0 0 12px ${color}44` : "none",
                     }}>{role}</button>
                 );
               })}
@@ -254,7 +267,7 @@ function VotingForm({ pollData, onRefresh }) {
 function ApplicantsForm({ pollData, onRefresh }) {
   const [voterName, setVoterName] = useState("");
   const [locked, setLocked]       = useState(false);
-  const [picks, setPicks]         = useState([]); // up to 3 names
+  const [picks, setPicks]         = useState([]);
   const [submitted, setSubmitted] = useState(false);
   const [error, setError]         = useState("");
   const [loading, setLoading]     = useState(false);
@@ -322,10 +335,9 @@ function ApplicantsForm({ pollData, onRefresh }) {
         <div style={sectionHeaderStyle}>📋 Staff Applicants</div>
         <p style={{ color: "#666", fontSize: 13, marginBottom: 14 }}>
           Select up to <strong style={{ color: "#ccc" }}>3 applicants</strong> you think should be considered for staff.
-          At least one selection is required.  
+          At least one selection is required.
         </p>
 
-        {/* pick count summary */}
         <div style={{ marginBottom: 14, fontSize: 12, color: picks.length > 0 ? "#f5c542" : "#555" }}>
           {picks.length === 0 ? "No selections yet" : `${picks.length} / ${MAX_PICKS} selected`}
           {picks.length > 0 && <span style={{ color: "#666" }}> — {picks.join(", ")}</span>}
@@ -618,9 +630,12 @@ function ResultsPanel({ pollData }) {
     byRole[m.currentRole].push(m);
   }
 
+  const allPresentRoles = [...new Set(pollData.staff.map(m => m.currentRole))];
+  const roleOrder = [...ROLES, ...allPresentRoles.filter(r => !ROLES.includes(r))];
+
   const buildDiscord = () => {
     const lines = [`@here :AU_downvote: **Staff Results #${pollData.pollNumber}** :AU_greencheckmark:`];
-    for (const role of ROLES) {
+    for (const role of roleOrder) {
       const members = byRole[role] || [];
       if (!members.length) continue;
       const icon = role === "Support" ? ":555ss:" : role === "Moderator" ? ":55Mod:" : ":5Admin:";
@@ -644,7 +659,6 @@ function ResultsPanel({ pollData }) {
     setTimeout(() => setCopied(false), 2200);
   };
 
-  // Collect feedback entries: { voter, feedback }[]
   const feedbackEntries = Object.entries(pollData.votes)
     .map(([voter, v]) => ({ voter, feedback: v.__feedback__ }))
     .filter(e => e.feedback && e.feedback.trim() && e.feedback.trim().toUpperCase() !== "N/A");
@@ -662,6 +676,9 @@ function ResultsPanel({ pollData }) {
           <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 8 }}>
             <span style={{ fontFamily: "'Cinzel',serif", color: "#e8d5a3", fontWeight: 700 }}>@{m.username}</span>
             <RoleBadge role={m.currentRole} />
+            {(m.voteOptions && m.voteOptions.length > 0) && (
+              <span style={{ fontSize: 10, color: "#555", letterSpacing: 0.5 }}>custom options</span>
+            )}
             <span style={{ marginLeft: "auto" }}>
               <Tooltip lines={m.count ? allVoters.map(v => {
                 const role = (pollData.votes[v] || {})[m.username];
@@ -672,19 +689,21 @@ function ResultsPanel({ pollData }) {
             </span>
           </div>
           <div style={{ display: "flex", flexWrap: "wrap", gap: 6 }}>
-            {Object.entries(m.pcts).filter(([, v]) => v > 0).sort((a, b) => b[1] - a[1]).map(([role, pct]) => (
-              <span key={role} style={{
-                background: `${ROLE_COLORS[role]}22`, color: ROLE_COLORS[role],
-                border: `1px solid ${ROLE_COLORS[role]}55`,
-                borderRadius: 6, padding: "3px 12px", fontSize: 13, fontWeight: 700,
-              }}>{pct}% {role}</span>
-            ))}
+            {Object.entries(m.pcts).filter(([, v]) => v > 0).sort((a, b) => b[1] - a[1]).map(([role, pct]) => {
+              const color = getRoleColor(role);
+              return (
+                <span key={role} style={{
+                  background: `${color}22`, color: color,
+                  border: `1px solid ${color}55`,
+                  borderRadius: 6, padding: "3px 12px", fontSize: 13, fontWeight: 700,
+                }}>{pct}% {role}</span>
+              );
+            })}
             {!Object.keys(m.pcts).length && <span style={{ color: "#555", fontSize: 12 }}>No votes yet</span>}
           </div>
         </div>
       ))}
 
-      {/* ── Feedback section ── */}
       {feedbackEntries.length > 0 && (
         <div style={{ marginTop: 20, marginBottom: 20 }}>
           <button
@@ -854,12 +873,102 @@ function ToggleSwitch({ value, onChange }) {
   );
 }
 
+// ── Vote Options Editor (per staff member) ────────────────────────────────────
+function VoteOptionsEditor({ options, onChange }) {
+  const [newOpt, setNewOpt] = useState("");
+  // null/undefined = using defaults, array = custom
+  const usingCustom = options !== null && options !== undefined;
+  const displayOpts = usingCustom ? options : [...ROLES];
+
+  const activate = () => {
+    if (!usingCustom) onChange([...ROLES]); // copy defaults in as starting point
+  };
+
+  const addOpt = () => {
+    const v = newOpt.trim();
+    if (!v) return;
+    const base = usingCustom ? displayOpts : [...ROLES];
+    onChange([...base, v]);
+    setNewOpt("");
+  };
+
+  const removeOpt = (i) => {
+    onChange(displayOpts.filter((_, idx) => idx !== i));
+  };
+
+  const resetToDefault = () => onChange(null);
+
+  return (
+    <div style={{
+      marginTop: 10, padding: "12px 14px", borderRadius: 8,
+      background: "rgba(255,255,255,0.02)", border: "1px solid rgba(255,255,255,0.07)",
+    }}>
+      <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 10 }}>
+        <span style={{ fontSize: 11, color: "#888", letterSpacing: 1, textTransform: "uppercase" }}>
+          Vote Options{" "}
+          {!usingCustom
+            ? <span style={{ color: "#555" }}>(using defaults)</span>
+            : <span style={{ color: "#c084fc" }}>(custom)</span>
+          }
+        </span>
+        {usingCustom && (
+          <button onClick={resetToDefault} style={{
+            fontSize: 10, color: "#888", background: "rgba(255,255,255,0.05)",
+            border: "1px solid rgba(255,255,255,0.1)", borderRadius: 4,
+            padding: "2px 8px", cursor: "pointer",
+          }}>
+            Reset to defaults
+          </button>
+        )}
+      </div>
+
+      {/* Option chips */}
+      <div style={{ display: "flex", flexWrap: "wrap", gap: 6, marginBottom: 10 }}>
+        {displayOpts.map((opt, i) => {
+          const color = getRoleColor(opt);
+          return (
+            <div key={i} style={{
+              display: "flex", alignItems: "center", gap: 5,
+              background: `${color}18`, border: `1px solid ${color}55`,
+              borderRadius: 6, padding: "3px 8px 3px 10px",
+            }}>
+              <span style={{ fontSize: 12, color: color, fontWeight: 700 }}>{opt}</span>
+              <button
+                onClick={() => { activate(); removeOpt(i); }}
+                style={{ background: "none", border: "none", color: "#666", cursor: "pointer", fontSize: 12, padding: "0 2px", lineHeight: 1 }}
+              >✕</button>
+            </div>
+          );
+        })}
+        {displayOpts.length === 0 && (
+          <span style={{ fontSize: 11, color: "#555" }}>No options — add some below</span>
+        )}
+      </div>
+
+      {/* Add new option */}
+      <div style={{ display: "flex", gap: 6 }}>
+        <input
+          value={newOpt}
+          onChange={e => setNewOpt(e.target.value)}
+          onKeyDown={e => { if (e.key === "Enter") { activate(); addOpt(); } }}
+          placeholder="Add option (e.g. Head Mod)"
+          style={{ ...inputStyle, flex: 1, fontSize: 12, padding: "6px 10px" }}
+        />
+        <button onClick={() => { activate(); addOpt(); }} style={{ ...addBtnStyle, fontSize: 12, padding: "6px 12px" }}>
+          + Add
+        </button>
+      </div>
+    </div>
+  );
+}
+
 // ── Admin Settings Panel ──────────────────────────────────────────────────────
 function SettingsPanel({ pollData, adminPassword, onRefresh }) {
   const [pollNumber, setPollNumber]           = useState(pollData.pollNumber);
   const [staff, setStaff]                     = useState(pollData.staff.map(m => ({ ...m })));
   const [newUser, setNewUser]                 = useState("");
   const [newRole, setNewRole]                 = useState("Support");
+  const [expandedMember, setExpandedMember]   = useState(null);
   const mvp0 = pollData.mvp || {};
   const app0 = pollData.applicants || {};
   const [mvpMonth, setMvpMonth]               = useState(mvp0.month || "");
@@ -869,7 +978,6 @@ function SettingsPanel({ pollData, adminPassword, onRefresh }) {
   const [adminCandidates, setAdminCandidates] = useState(mvp0.adminCandidates || []);
   const [newStaffName, setNewStaffName]       = useState("");
   const [newAdminName, setNewAdminName]       = useState("");
-  // Applicant settings
   const [appCandidates, setAppCandidates]     = useState(app0.candidates || []);
   const [newAppName, setNewAppName]           = useState("");
   const [saving, setSaving]                   = useState(false);
@@ -892,9 +1000,20 @@ function SettingsPanel({ pollData, adminPassword, onRefresh }) {
     setMsg("✓ Saved!"); onRefresh(); setTimeout(() => setMsg(""), 2000);
   };
 
-  const addMember       = () => { if (!newUser.trim()) return; setStaff(s => [...s, { username: newUser.trim(), currentRole: newRole }]); setNewUser(""); };
-  const removeMember    = i  => setStaff(s => s.filter((_, idx) => idx !== i));
-  const updateMember    = (i, f, v) => setStaff(s => s.map((m, idx) => idx === i ? { ...m, [f]: v } : m));
+  const addMember = () => {
+    if (!newUser.trim()) return;
+    // New members start with null voteOptions (= use defaults)
+    setStaff(s => [...s, { username: newUser.trim(), currentRole: newRole, voteOptions: null }]);
+    setNewUser("");
+  };
+  const removeMember = i => {
+    setStaff(s => s.filter((_, idx) => idx !== i));
+    if (expandedMember === i) setExpandedMember(null);
+  };
+  const updateMember = (i, f, v) => setStaff(s => s.map((m, idx) => idx === i ? { ...m, [f]: v } : m));
+  const setMemberVoteOptions = (i, opts) =>
+    setStaff(s => s.map((m, idx) => idx === i ? { ...m, voteOptions: opts } : m));
+
   const addStaffCand    = () => { if (!newStaffName.trim()) return; setStaffCandidates(c => [...c, newStaffName.trim()]); setNewStaffName(""); };
   const removeStaffCand = i  => setStaffCandidates(c => c.filter((_, idx) => idx !== i));
   const addAdminCand    = () => { if (!newAdminName.trim()) return; setAdminCandidates(c => [...c, newAdminName.trim()]); setNewAdminName(""); };
@@ -910,17 +1029,77 @@ function SettingsPanel({ pollData, adminPassword, onRefresh }) {
       </div>
 
       <label style={labelStyle}>Staff Members</label>
-      <div style={{ marginBottom: 16 }}>
-        {staff.map((m, i) => (
-          <div key={i} style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 8 }}>
-            <input value={m.username} onChange={e => updateMember(i, "username", e.target.value)} style={{ ...inputStyle, flex: 1 }} />
-            <select value={m.currentRole} onChange={e => updateMember(i, "currentRole", e.target.value)} style={{ ...inputStyle, width: 130 }}>
-              {ROLES.map(r => <option key={r}>{r}</option>)}
-            </select>
-            <button onClick={() => removeMember(i)} style={removeBtnStyle}>✕</button>
-          </div>
-        ))}
+      <div style={{ marginBottom: 8 }}>
+        {staff.map((m, i) => {
+          const isExpanded = expandedMember === i;
+          const hasCustom  = m.voteOptions !== null && m.voteOptions !== undefined;
+          // Build role dropdown options: standard roles + any custom vote options
+          const roleDropdownOpts = [...new Set([...ROLES, ...(m.voteOptions || [])])];
+          return (
+            <div key={i} style={{ marginBottom: 6 }}>
+              <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+                <input
+                  value={m.username}
+                  onChange={e => updateMember(i, "username", e.target.value)}
+                  style={{ ...inputStyle, flex: 1 }}
+                />
+                <select
+                  value={m.currentRole}
+                  onChange={e => updateMember(i, "currentRole", e.target.value)}
+                  style={{ ...inputStyle, width: 130 }}
+                >
+                  {roleDropdownOpts.map(r => <option key={r}>{r}</option>)}
+                </select>
+                {/* ⚙ toggle to expand vote options editor */}
+                <button
+                  onClick={() => setExpandedMember(isExpanded ? null : i)}
+                  title="Customise vote options for this member"
+                  style={{
+                    padding: "6px 10px", borderRadius: 6, cursor: "pointer", fontSize: 13,
+                    flexShrink: 0, transition: "all 0.15s",
+                    background: hasCustom ? "rgba(192,132,252,0.15)" : "rgba(255,255,255,0.05)",
+                    border: hasCustom ? "1px solid rgba(192,132,252,0.4)" : "1px solid rgba(255,255,255,0.1)",
+                    color: hasCustom ? "#c084fc" : "#666",
+                  }}
+                >
+                  {isExpanded ? "▲" : "⚙"}
+                </button>
+                <button onClick={() => removeMember(i)} style={removeBtnStyle}>✕</button>
+              </div>
+
+              {/* Expanded vote options editor */}
+              {isExpanded && (
+                <VoteOptionsEditor
+                  options={m.voteOptions ?? null}
+                  onChange={opts => setMemberVoteOptions(i, opts)}
+                />
+              )}
+            </div>
+          );
+        })}
       </div>
+
+      {/* Hint about defaults */}
+      <div style={{
+        marginBottom: 16, padding: "10px 14px", borderRadius: 8,
+        background: "rgba(255,215,0,0.04)", border: "1px solid rgba(255,215,0,0.1)",
+        fontSize: 12, color: "#666", lineHeight: 1.6,
+      }}>
+        <span style={{ color: "#888" }}>Default options:</span>{" "}
+        {ROLES.map((r, i) => {
+          const color = getRoleColor(r);
+          return (
+            <span key={r}>
+              <span style={{ color }}>{r}</span>
+              {i < ROLES.length - 1 && <span style={{ color: "#444" }}>, </span>}
+            </span>
+          );
+        })}
+        <span style={{ color: "#555" }}>
+          {" "}— click ⚙ next to any member to override their options.
+        </span>
+      </div>
+
       <div style={{ display: "flex", gap: 8, marginBottom: 32 }}>
         <input value={newUser} onChange={e => setNewUser(e.target.value)} placeholder="New username"
           style={{ ...inputStyle, flex: 1 }} onKeyDown={e => e.key === "Enter" && addMember()} />
@@ -1143,11 +1322,14 @@ export default function App() {
       <Particles />
       <div style={{ position: "relative", zIndex: 1, minHeight: "100vh", background: "radial-gradient(ellipse at 20% 10%, rgba(184,134,11,.07) 0%, transparent 60%), radial-gradient(ellipse at 80% 90%, rgba(59,130,246,.05) 0%, transparent 60%)", padding: "32px 16px 70px", fontFamily: "'Crimson Pro', serif", color: "#ccc" }}>
         <div style={{ maxWidth: 660, margin: "0 auto", animation: "fadeIn 0.55s ease" }}>
+
+          {/* ── Header ── */}
           <div style={{ textAlign: "center", marginBottom: 30 }}>
             <div style={{ fontSize: 11, letterSpacing: 4, color: "#b8860b", textTransform: "uppercase", marginBottom: 8 }}>Reason Private Server</div>
             <h1 style={{ fontFamily: "'Cinzel',serif", fontSize: 27, fontWeight: 900, color: "#e8d5a3", letterSpacing: 2, lineHeight: 1.2 }}>Staff Polls</h1>
             <div style={{ width: 60, height: 2, background: "linear-gradient(90deg,transparent,#b8860b,transparent)", margin: "12px auto 0" }} />
           </div>
+
           <div style={{ display: "flex", background: "rgba(255,255,255,0.04)", borderRadius: 10, padding: 4, marginBottom: 22, border: "1px solid rgba(255,255,255,0.07)" }}>
             {tabs.map(([key, label]) => (
               <button key={key} onClick={() => setTab(key)} style={{
