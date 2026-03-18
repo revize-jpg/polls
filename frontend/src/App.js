@@ -376,6 +376,21 @@ function MvpForm({ pollData, onRefresh }) {
 
   return (
     <div>
+      {/* Banner image — shown above username box if set */}
+      {mvp.image && (
+        <div style={{ marginBottom: 20 }}>
+          <img
+            src={mvp.image} alt="MVP banner"
+            style={{
+              width: "100%", borderRadius: 10, display: "block",
+              border: "1px solid rgba(255,215,0,0.15)",
+              boxShadow: "0 4px 24px rgba(0,0,0,0.5)",
+              maxHeight: 220, objectFit: "cover",
+            }}
+          />
+        </div>
+      )}
+
       <UsernameInput value={voterName} locked={locked} onChange={handleNameChange}
         onLock={() => voterName.trim() && setLocked(true)}
         onUnlock={() => { setLocked(false); setStaffRanks([]); setAdminRanks([]); }} />
@@ -998,6 +1013,7 @@ function SettingsPanel({ pollData, adminPassword, onRefresh }) {
   const [expandedMember, setExpandedMember]   = useState(null);
   const mvp0 = pollData.mvp || {}, app0 = pollData.applicants || {};
   const [mvpMonth, setMvpMonth]               = useState(mvp0.month || "");
+  const [mvpImage, setMvpImage]               = useState(mvp0.image || "");
   const [staffEnabled, setStaffEnabled]       = useState(!!mvp0.staffEnabled);
   const [adminEnabled, setAdminEnabled]       = useState(!!mvp0.adminEnabled);
   const [staffCandidates, setStaffCandidates] = useState(mvp0.staffCandidates || []);
@@ -1016,7 +1032,7 @@ function SettingsPanel({ pollData, adminPassword, onRefresh }) {
     const res = await apiFetch("/api/admin/settings", {
       method: "PUT",
       body: { adminPassword, pollNumber: Number(pollNumber), staff,
-        mvp: { month: mvpMonth.trim(), staffEnabled, adminEnabled, staffCandidates, adminCandidates },
+        mvp: { month: mvpMonth.trim(), image: mvpImage, staffEnabled, adminEnabled, staffCandidates, adminCandidates },
         applicants: { candidates: appCandidates } },
     });
     setSaving(false);
@@ -1114,6 +1130,51 @@ function SettingsPanel({ pollData, adminPassword, onRefresh }) {
           <label style={labelStyle}>Month</label>
           <input value={mvpMonth} onChange={e=>setMvpMonth(e.target.value)} placeholder="e.g. March" style={{ ...inputStyle, width:"100%" }} />
           {mvpMonth.trim()&&<div style={{ marginTop:8, fontSize:12, color:"#888" }}>Preview: <span style={{color:"#f5c542"}}>{monthPreview}MVP Poll</span>{" · "}<span style={{color:"#a8b2c0"}}>{monthPreview}Staff MVP</span>{" · "}<span style={{color:"#a8b2c0"}}>{monthPreview}Admin MVP</span></div>}
+        </div>
+
+        {/* ── MVP Banner Image ── */}
+        <div style={{ marginBottom: 24 }}>
+          <label style={labelStyle}>Banner Image <span style={{ color:"#555", textTransform:"none", letterSpacing:0 }}>(shown above username box on MVP tab)</span></label>
+          {mvpImage ? (
+            <div style={{ marginBottom: 10 }}>
+              <img
+                src={mvpImage} alt="MVP banner preview"
+                style={{ width:"100%", maxHeight:180, objectFit:"cover", borderRadius:8, border:"1px solid rgba(255,215,0,0.15)", display:"block" }}
+              />
+              <button
+                onClick={() => setMvpImage("")}
+                style={{ marginTop:8, padding:"6px 16px", borderRadius:6, cursor:"pointer", fontSize:12,
+                  background:"#ff444418", border:"1px solid #ff4444", color:"#ff8888" }}
+              >✕ Remove Image</button>
+            </div>
+          ) : (
+            <div style={{ marginBottom: 10, padding:"18px", borderRadius:8, border:"2px dashed rgba(255,255,255,0.1)", textAlign:"center", color:"#555", fontSize:13 }}>
+              No image set
+            </div>
+          )}
+          <label style={{
+            display:"flex", alignItems:"center", gap:8, cursor:"pointer",
+            padding:"9px 14px", borderRadius:8,
+            background:"rgba(255,215,0,0.08)", border:"1px solid rgba(255,215,0,0.25)", color:"#ffd700",
+            fontFamily:"'Cinzel',serif", fontWeight:700, fontSize:12, letterSpacing:0.5,
+            width:"fit-content",
+          }}>
+            📁 {mvpImage ? "Change Image" : "Upload Image"}
+            <input
+              type="file" accept="image/*"
+              style={{ display:"none" }}
+              onChange={e => {
+                const file = e.target.files?.[0];
+                if (!file) return;
+                const reader = new FileReader();
+                reader.onload = ev => setMvpImage(ev.target.result);
+                reader.readAsDataURL(file);
+                // reset input so same file can be re-selected
+                e.target.value = "";
+              }}
+            />
+          </label>
+          <div style={{ marginTop:6, fontSize:11, color:"#555" }}>Recommended: wide/landscape image. JPG, PNG, GIF, WebP supported.</div>
         </div>
         <div style={{ marginBottom: 24 }}>
           <div style={{ display:"flex", alignItems:"center", gap:12, marginBottom:14 }}>
