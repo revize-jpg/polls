@@ -1127,52 +1127,96 @@ function SettingsPanel({ pollData, adminPassword, onRefresh }) {
     </div>
   );
 }
+// ── Admin Panel ───────────────────────────────────────────────────────────────
 function AdminPanel({ pollData, onRefresh }) {
   const [pw, setPw] = useState("");
   const [unlocked, setUnlocked] = useState(false);
   const [subTab, setSubTab] = useState("results");
   const [resetting, setResetting] = useState(false);
 
-  const unlock = () => { if (pw === ADMIN_PASSWORD) setUnlocked(true); else alert("Wrong password."); };
+  const unlock = () => {
+    if (pw === ADMIN_PASSWORD) {
+      setUnlocked(true);
+    } else {
+      alert("Wrong password.");
+    }
+  };
 
   const reset = async () => {
     if (!window.confirm("Reset all votes and advance to the next poll number?")) return;
     setResetting(true);
     await apiFetch("/api/admin/reset", { method: "DELETE", body: { adminPassword: pw } });
-    setResetting(false); onRefresh();
+    setResetting(false);
+    onRefresh();
   };
 
-  if (!unlocked) return (
-    <div style={{ textAlign: "center", padding: "28px 0" }}>
-      <div style={{ fontSize: 40, marginBottom: 14 }}>🔒</div>
-      <p style={{ color: "#888", marginBottom: 14, fontSize: 14 }}>Admin access required</p>
-      <input type="password" value={pw} onChange={e=>setPw(e.target.value)} onKeyDown={e=>e.key==="Enter"&&unlock()} placeholder="Password" style={{ ...inputStyle, width:"100%", textAlign:"center", marginBottom:12 }} />
-      <button onClick={unlock} style={submitBtnStyle}>Unlock</button>
-    </div>
-  );
+  if (!unlocked) {
+    return (
+      <div style={{ textAlign: "center", padding: "28px 0" }}>
+        <div style={{ fontSize: 40, marginBottom: 14 }}>🔒</div>
+        <p style={{ color: "#888", marginBottom: 14, fontSize: 14 }}>Admin access required</p>
+        <input 
+          type="password" 
+          value={pw} 
+          onChange={e => setPw(e.target.value)}
+          onKeyDown={e => e.key === "Enter" && unlock()}
+          placeholder="Password" 
+          style={{ ...inputStyle, width: "100%", textAlign: "center", marginBottom: 12 }} 
+        />
+        <button onClick={unlock} style={submitBtnStyle}>Unlock</button>
+      </div>
+    );
+  }
 
-  const subTabs = [["results","📊 Results"],["applicants","📋 Applicants"],["mvp","🏆 MVP"],["edit","✏ Edit"],["settings","⚙️ Settings"]];
+  // Safe fallback if pollData is incomplete
+  if (!pollData) {
+    return <div style={{ padding: 40, textAlign: "center", color: "#888" }}>Loading admin panel...</div>;
+  }
+
+  const subTabs = [
+    ["results", "📊 Results"],
+    ["applicants", "📋 Applicants"],
+    ["mvp", "🏆 MVP"],
+    ["edit", "✏ Edit"],
+    ["settings", "⚙️ Settings"]
+  ];
 
   return (
     <div>
       <div style={{ display: "flex", gap: 6, marginBottom: 20, flexWrap: "wrap" }}>
-        {subTabs.map(([k,label]) => (
-          <button key={k} onClick={()=>setSubTab(k)} style={{
-            flex:1, padding:"9px", borderRadius:8, border:"none", cursor:"pointer", minWidth:60,
-            background: subTab===k?"rgba(184,134,11,0.25)":"rgba(255,255,255,0.04)",
-            color: subTab===k?"#ffd700":"#777",
-            fontFamily:"'Cinzel',serif", fontWeight:700, fontSize:11,
-            borderBottom: subTab===k?"2px solid #b8860b":"2px solid transparent",
-          }}>{label}</button>
+        {subTabs.map(([k, label]) => (
+          <button 
+            key={k} 
+            onClick={() => setSubTab(k)} 
+            style={{
+              flex: 1, padding: "9px", borderRadius: 8, border: "none", cursor: "pointer", minWidth: 60,
+              background: subTab === k ? "rgba(184,134,11,0.25)" : "rgba(255,255,255,0.04)",
+              color: subTab === k ? "#ffd700" : "#777",
+              fontFamily: "'Cinzel',serif", fontWeight: 700, fontSize: 11,
+              borderBottom: subTab === k ? "2px solid #b8860b" : "2px solid transparent",
+            }}
+          >
+            {label}
+          </button>
         ))}
-        <button onClick={reset} disabled={resetting} style={{ padding:"9px 12px", borderRadius:8, border:"1px solid #ff4444", background:"#ff444415", color:"#ff8888", fontFamily:"'Cinzel',serif", fontWeight:700, fontSize:11, cursor:"pointer", flexShrink:0 }}>{resetting?"…":"🔄"}</button>
+        <button 
+          onClick={reset} 
+          disabled={resetting} 
+          style={{
+            padding: "9px 12px", borderRadius: 8, border: "1px solid #ff4444",
+            background: "#ff444415", color: "#ff8888",
+            fontFamily: "'Cinzel',serif", fontWeight: 700, fontSize: 11, cursor: "pointer", flexShrink: 0,
+          }}
+        >
+          {resetting ? "…" : "🔄"}
+        </button>
       </div>
 
-      {subTab==="results" && <ResultsPanel pollData={pollData} />}
-      {subTab==="applicants" && <ApplicantResultsPanel pollData={pollData} />}
-      {subTab==="mvp" && <MvpResultsPanel pollData={pollData} />}
-      {subTab==="edit" && <VoteEditorPanel pollData={pollData} adminPassword={pw} onRefresh={onRefresh} />}
-      {subTab==="settings" && <SettingsPanel pollData={pollData} adminPassword={pw} onRefresh={onRefresh} />}
+      {subTab === "results" && <ResultsPanel pollData={pollData} />}
+      {subTab === "applicants" && <ApplicantResultsPanel pollData={pollData} />}
+      {subTab === "mvp" && <MvpResultsPanel pollData={pollData} />}
+      {subTab === "edit" && <VoteEditorPanel pollData={pollData} adminPassword={pw} onRefresh={onRefresh} />}
+      {subTab === "settings" && <SettingsPanel pollData={pollData} adminPassword={pw} onRefresh={onRefresh} />}
     </div>
   );
 }
