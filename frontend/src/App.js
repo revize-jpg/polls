@@ -2,15 +2,10 @@ import { useState, useEffect, useCallback } from "react";
 
 // ── Config ────────────────────────────────────────────────────────────────────
 const API = process.env.REACT_APP_API_URL || "";
-const ROLES = ["Demote", "Support", "Moderator", "Admin"];
-const ROLE_COLORS = { Demote: "#ff5555", Support: "#60a5fa", Moderator: "#a8b2c0", Admin: "#f5c542" };
 const ADMIN_PASSWORD = process.env.REACT_APP_ADMIN_PASSWORD || "Jac098!";
-const STAFF_POINTS = [3, 2, 1];
-const ADMIN_POINTS = [3, 2];
 const RANK_COLORS  = ["#f5c542", "#a8b2c0", "#cd7f32"];
 
 function getRoleColor(role) {
-  if (ROLE_COLORS[role]) return ROLE_COLORS[role];
   const colours = ["#c084fc", "#34d399", "#fb923c", "#f472b6", "#38bdf8", "#a3e635", "#e879f9"];
   let hash = 0;
   for (let i = 0; i < role.length; i++) hash = role.charCodeAt(i) + ((hash << 5) - hash);
@@ -110,36 +105,38 @@ function UsernameInput({ value, locked, onChange, onLock, onUnlock }) {
       </div>
       {locked && (
         <div style={{ fontSize: 11, color: "#f5c542", marginTop: 5, opacity: 0.8 }}>
-          Voting as <strong>{value}</strong> — click ✓ to change
+          Submitting as <strong>{value}</strong> — click ✓ to change
         </div>
       )}
     </div>
   );
 }
 
-// ── Voting Form ───────────────────────────────────────────────────────────────
+// ── Voting Form (Staff Feedback) ──────────────────────────────────────────────
 function VotingForm({ pollData, onRefresh }) {
   const [voterName, setVoterName] = useState("");
   const [locked, setLocked]       = useState(false);
-  const [picks, setPicks]         = useState({});
-  const [feedback, setFeedback]   = useState("");
+  // feedbacks: { [username]: string }
+  const [feedbacks, setFeedbacks] = useState({});
   const [submitted, setSubmitted] = useState(false);
   const [error, setError]         = useState("");
   const [loading, setLoading]     = useState(false);
 
   const isSelfFn = u => voterName.trim().toLowerCase() === u.toLowerCase() && voterName.trim() !== "";
-  const pick = (u, role) => { if (!isSelfFn(u)) setPicks(p => ({ ...p, [u]: role })); };
-  const allPicked = pollData.staff.every(m => isSelfFn(m.username) || picks[m.username]);
+
+  const setFeedback = (username, val) => setFeedbacks(f => ({ ...f, [username]: val }));
+
+  // All non-self members must have feedback filled in
+  const allFilled = pollData.staff.every(m => isSelfFn(m.username) || (feedbacks[m.username] || "").trim() !== "");
 
   const handleSubmit = async () => {
-    if (!voterName.trim())   { setError("Please enter your username."); return; }
-    if (!locked)             { setError("Please lock in your username first (click ⏎)."); return; }
-    if (!allPicked)          { setError("Please cast a vote for every staff member."); return; }
-    if (!feedback.trim())    { setError("Please fill in the feedback box before submitting."); return; }
+    if (!voterName.trim()) { setError("Please enter your username."); return; }
+    if (!locked)           { setError("Please lock in your username first (click ⏎)."); return; }
+    if (!allFilled)        { setError("Please fill in feedback for every staff member."); return; }
     setLoading(true); setError("");
     const res = await apiFetch("/api/vote", {
       method: "POST",
-      body: { voterName: voterName.trim(), votes: picks, feedback: feedback.trim() },
+      body: { voterName: voterName.trim(), feedbacks },
     });
     setLoading(false);
     if (res.error) { setError(res.error); return; }
@@ -149,21 +146,21 @@ function VotingForm({ pollData, onRefresh }) {
   if (submitted) return (
     <div style={{ textAlign: "center", padding: "60px 20px" }}>
       <div style={{ fontSize: 52, marginBottom: 14 }}>⚔️</div>
-      <h2 style={{ fontFamily: "'Cinzel',serif", color: "#e8d5a3", fontSize: 22, marginBottom: 8 }}>Vote Recorded</h2>
-      <p style={{ color: "#888", fontSize: 14 }}>Your vote for Staff Poll #{pollData.pollNumber} has been saved.</p>
+      <h2 style={{ fontFamily: "'Cinzel',serif", color: "#e8d5a3", fontSize: 22, marginBottom: 8 }}>Feedback Recorded</h2>
+      <p style={{ color: "#888", fontSize: 14 }}>Your feedback for Staff Poll #{pollData.pollNumber} has been saved.</p>
     </div>
   );
 
   return (
     <div>
       <UsernameInput value={voterName} locked={locked}
-        onChange={v => { setVoterName(v); setPicks(p => { const n = {...p}; delete n[v]; return n; }); }}
-        onLock={() => voterName.trim() && setLocked(true)} onUnlock={() => setLocked(false)} />
-      <p style={{ color: "#666", fontSize: 13, marginBottom: 18 }}>Select one choice per staff member.</p>
+        onChange={v => setVoterName(v)}
+        onLock={() => voterName.trim() && setLocked(true)}
+        onUnlock={() => setLocked(false)} />
+      <p style={{ color: "#666", fontSize: 13, marginBottom: 18 }}>Leave feedback for each staff member below.</p>
 
       {pollData.staff.map(m => {
         const isSelf = isSelfFn(m.username);
-        const voteOptions = (m.voteOptions && m.voteOptions.length > 0) ? m.voteOptions : ROLES;
         return (
           <div key={m.username} style={{ ...cardStyle, position: "relative" }}>
             {isSelf && (
@@ -171,75 +168,75 @@ function VotingForm({ pollData, onRefresh }) {
                 position: "absolute", inset: 0, display: "flex", alignItems: "center",
                 justifyContent: "center", borderRadius: 10, zIndex: 2,
                 background: "rgba(0,0,0,0.6)", fontSize: 12, color: "#666", letterSpacing: 1,
-              }}>You cannot vote for yourself</div>
+              }}>You cannot leave feedback for yourself</div>
             )}
-            <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 12, opacity: isSelf ? 0.3 : 1 }}>
+            <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 10, opacity: isSelf ? 0.3 : 1 }}>
               <span style={{ fontFamily: "'Cinzel',serif", fontWeight: 700, fontSize: 15, color: "#e8d5a3" }}>{m.username}</span>
               <RoleBadge role={m.currentRole} />
             </div>
-            <div style={{ display: "flex", gap: 10, flexWrap: "wrap", opacity: isSelf ? 0.3 : 1 }}>
-              {voteOptions.map(role => {
-                const selected = picks[m.username] === role;
-                const color = getRoleColor(role);
-                return (
-                  <button key={role} onClick={() => pick(m.username, role)} disabled={isSelf} style={{
-                    padding: "8px 18px", borderRadius: 8, fontFamily: "'Cinzel',serif", fontWeight: 700, fontSize: 12,
-                    border: `2px solid ${selected ? color : "rgba(255,255,255,0.1)"}`,
-                    background: selected ? `${color}22` : "rgba(255,255,255,0.03)",
-                    color: selected ? color : "#888",
-                    cursor: isSelf ? "not-allowed" : "pointer", letterSpacing: 1, transition: "all 0.15s",
-                    boxShadow: selected ? `0 0 12px ${color}44` : "none",
-                  }}>{role}</button>
-                );
-              })}
-            </div>
+            <textarea
+              disabled={isSelf}
+              value={feedbacks[m.username] || ""}
+              onChange={e => setFeedback(m.username, e.target.value)}
+              rows={3}
+              placeholder={`Feedback for ${m.username}…`}
+              style={{
+                ...inputStyle, resize: "vertical", fontFamily: "'Crimson Pro', serif",
+                fontSize: 13, lineHeight: 1.6, opacity: isSelf ? 0.3 : 1,
+                borderColor: !isSelf && !(feedbacks[m.username] || "").trim()
+                  ? "rgba(255,100,100,0.3)" : "rgba(255,255,255,0.13)",
+              }}
+            />
           </div>
         );
       })}
 
-      <div style={{ marginTop: 8, marginBottom: 20 }}>
-        <label style={labelStyle}>Vote Feedback <span style={{ color: "#ff8888", fontSize: 10 }}>* required</span></label>
-        <textarea value={feedback} onChange={e => setFeedback(e.target.value)} rows={4}
-          placeholder="Explain any vote results here. Your message will be reworded if the player wishes to receive this feedback. Type N/A if not applicable."
-          style={{ ...inputStyle, resize: "vertical", fontFamily: "'Crimson Pro', serif", fontSize: 13, lineHeight: 1.6,
-            borderColor: !feedback.trim() ? "rgba(255,100,100,0.25)" : "rgba(255,255,255,0.13)" }} />
-      </div>
-
       {error && <div style={errorStyle}>⚠ {error}</div>}
       <button onClick={handleSubmit} disabled={loading} style={submitBtnStyle}>
-        {loading ? "Submitting…" : "Submit Vote"}
+        {loading ? "Submitting…" : "Submit Feedback"}
       </button>
     </div>
   );
 }
 
 // ── Applicants Form ───────────────────────────────────────────────────────────
+// Staff write in up to 3 names, each with a feedback box.
+// Admin-set candidates (from settings) are shown as a reference / can be pre-filled.
 function ApplicantsForm({ pollData, onRefresh }) {
   const [voterName, setVoterName] = useState("");
   const [locked, setLocked]       = useState(false);
-  const [picks, setPicks]         = useState([]);
+  // entries: [{ name: string, feedback: string }]
+  const [entries, setEntries]     = useState([
+    { name: "", feedback: "" },
+    { name: "", feedback: "" },
+    { name: "", feedback: "" },
+  ]);
   const [submitted, setSubmitted] = useState(false);
   const [error, setError]         = useState("");
   const [loading, setLoading]     = useState(false);
 
-  const applicants = (pollData.applicants || {}).candidates || [];
-  const MAX_PICKS = 3;
-  const isSelfFn = n => voterName.trim().toLowerCase() === n.toLowerCase() && voterName.trim() !== "";
+  const MAX = 3;
+  // Admin-provided candidate names shown as hints
+  const hints = (pollData.applicants || {}).candidates || [];
 
-  const handleNameChange = v => {
-    setVoterName(v);
-    setPicks(p => p.filter(n => n.toLowerCase() !== v.trim().toLowerCase()));
-  };
-  const togglePick = name => {
-    if (isSelfFn(name)) return;
-    setPicks(p => p.includes(name) ? p.filter(n => n !== name) : p.length >= MAX_PICKS ? p : [...p, name]);
-  };
+  const updateEntry = (i, field, val) =>
+    setEntries(prev => prev.map((e, idx) => idx === i ? { ...e, [field]: val } : e));
+
   const handleSubmit = async () => {
     if (!voterName.trim()) { setError("Please enter your username."); return; }
-    if (!locked)           { setError("Please lock in your username first (press Enter or click ⏎)."); return; }
-    if (picks.length === 0) { setError("Please select at least one applicant."); return; }
+    if (!locked)           { setError("Please lock in your username first."); return; }
+
+    const filled = entries.filter(e => e.name.trim() !== "");
+    if (filled.length === 0) { setError("Please enter at least one applicant name."); return; }
+
+    const missingFeedback = filled.find(e => !e.feedback.trim());
+    if (missingFeedback) { setError(`Please fill in feedback for "${missingFeedback.name}".`); return; }
+
     setLoading(true); setError("");
-    const res = await apiFetch("/api/applicant-vote", { method: "POST", body: { voterName: voterName.trim(), picks } });
+    const res = await apiFetch("/api/applicant-vote", {
+      method: "POST",
+      body: { voterName: voterName.trim(), picks: filled.map(e => ({ name: e.name.trim(), feedback: e.feedback.trim() })) },
+    });
     setLoading(false);
     if (res.error) { setError(res.error); return; }
     setSubmitted(true); onRefresh();
@@ -248,93 +245,123 @@ function ApplicantsForm({ pollData, onRefresh }) {
   if (submitted) return (
     <div style={{ textAlign: "center", padding: "60px 20px" }}>
       <div style={{ fontSize: 52, marginBottom: 14 }}>📋</div>
-      <h2 style={{ fontFamily: "'Cinzel',serif", color: "#e8d5a3", fontSize: 22, marginBottom: 8 }}>Applicant Vote Recorded</h2>
+      <h2 style={{ fontFamily: "'Cinzel',serif", color: "#e8d5a3", fontSize: 22, marginBottom: 8 }}>Applicant Feedback Recorded</h2>
       <p style={{ color: "#888", fontSize: 14 }}>Thanks for your input!</p>
     </div>
-  );
-  if (applicants.length === 0) return (
-    <div style={{ textAlign: "center", padding: "50px 20px", color: "#555", fontSize: 14 }}>No applicants are currently listed.</div>
   );
 
   return (
     <div>
-      <UsernameInput value={voterName} locked={locked} onChange={handleNameChange}
-        onLock={() => voterName.trim() && setLocked(true)} onUnlock={() => { setLocked(false); setPicks([]); }} />
-      <div style={{ marginBottom: 16 }}>
-        <div style={sectionHeaderStyle}>📋 Staff Applicants</div>
-        <p style={{ color: "#666", fontSize: 13, marginBottom: 14 }}>
-          Select up to <strong style={{ color: "#ccc" }}>3 applicants</strong>. At least one selection required.
-        </p>
-        <div style={{ marginBottom: 14, fontSize: 12, color: picks.length > 0 ? "#f5c542" : "#555" }}>
-          {picks.length === 0 ? "No selections yet" : `${picks.length} / ${MAX_PICKS} selected`}
-          {picks.length > 0 && <span style={{ color: "#666" }}> — {picks.join(", ")}</span>}
+      <UsernameInput value={voterName} locked={locked}
+        onChange={v => setVoterName(v)}
+        onLock={() => voterName.trim() && setLocked(true)}
+        onUnlock={() => { setLocked(false); }} />
+
+      <div style={sectionHeaderStyle}>📋 Staff Applicants</div>
+      <p style={{ color: "#666", fontSize: 13, marginBottom: 6 }}>
+        Write in up to <strong style={{ color: "#ccc" }}>3 applicant names</strong> and leave feedback for each.
+      </p>
+
+      {hints.length > 0 && (
+        <div style={{ marginBottom: 16, padding: "10px 14px", borderRadius: 8, background: "rgba(96,165,250,0.05)", border: "1px solid rgba(96,165,250,0.15)", fontSize: 12, color: "#666" }}>
+          <span style={{ color: "#888", letterSpacing: 1 }}>CURRENT APPLICANTS: </span>
+          {hints.map((h, i) => (
+            <span key={h}>
+              <span style={{ color: "#60a5fa", fontWeight: 700 }}>{h}</span>
+              {i < hints.length - 1 && <span style={{ color: "#444" }}>, </span>}
+            </span>
+          ))}
         </div>
-        <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
-          {applicants.map(name => {
-            const isSelf = isSelfFn(name), selected = picks.includes(name), full = !selected && picks.length >= MAX_PICKS;
-            return (
-              <button key={name} onClick={() => togglePick(name)} disabled={isSelf || full} style={{
-                padding: "11px 18px", borderRadius: 9, textAlign: "left", width: "100%",
-                border: `2px solid ${selected ? "#60a5fa" : isSelf || full ? "rgba(255,255,255,0.04)" : "rgba(255,255,255,0.1)"}`,
-                background: selected ? "rgba(96,165,250,0.12)" : isSelf || full ? "rgba(255,255,255,0.01)" : "rgba(255,255,255,0.03)",
-                color: isSelf ? "#444" : full ? "#555" : selected ? "#60a5fa" : "#ccc",
-                fontFamily: "'Cinzel',serif", fontWeight: 700, fontSize: 13,
-                cursor: isSelf || full ? "not-allowed" : "pointer", letterSpacing: 0.5, transition: "all 0.15s",
-                boxShadow: selected ? "0 0 14px rgba(96,165,250,0.2)" : "none",
-                display: "flex", alignItems: "center", justifyContent: "space-between",
-              }}>
-                <span>{name}</span>
-                <span style={{ display: "flex", alignItems: "center", gap: 6 }}>
-                  {isSelf && <span style={{ fontSize: 11, color: "#555", fontWeight: 400 }}>yourself</span>}
-                  {full && !isSelf && <span style={{ fontSize: 11, color: "#555", fontWeight: 400 }}>max reached</span>}
-                  {selected && <span style={{ fontSize: 15 }}>✓</span>}
-                </span>
-              </button>
-            );
-          })}
+      )}
+
+      {entries.map((entry, i) => (
+        <div key={i} style={{ ...cardStyle, marginBottom: 14 }}>
+          <div style={{ fontSize: 11, color: "#888", letterSpacing: 1, textTransform: "uppercase", marginBottom: 8 }}>
+            Applicant {i + 1} {i === 0 && <span style={{ color: "#555" }}>(required)</span>}
+            {i > 0 && <span style={{ color: "#555" }}>(optional)</span>}
+          </div>
+          <input
+            value={entry.name}
+            onChange={e => updateEntry(i, "name", e.target.value)}
+            placeholder={`Applicant name${hints[i] ? ` (e.g. ${hints[i]})` : ""}`}
+            style={{
+              ...inputStyle, marginBottom: 10,
+              borderColor: i === 0 && !entry.name.trim() ? "rgba(255,100,100,0.3)" : "rgba(255,255,255,0.13)",
+            }}
+          />
+          {entry.name.trim() && (
+            <textarea
+              value={entry.feedback}
+              onChange={e => updateEntry(i, "feedback", e.target.value)}
+              rows={3}
+              placeholder={`Why are you supporting ${entry.name.trim()}?`}
+              style={{
+                ...inputStyle, resize: "vertical", fontFamily: "'Crimson Pro', serif",
+                fontSize: 13, lineHeight: 1.6,
+                borderColor: !entry.feedback.trim() ? "rgba(255,100,100,0.3)" : "rgba(255,255,255,0.13)",
+              }}
+            />
+          )}
         </div>
-      </div>
+      ))}
+
       {error && <div style={errorStyle}>⚠ {error}</div>}
       <button onClick={handleSubmit} disabled={loading} style={submitBtnStyle}>
-        {loading ? "Submitting…" : "Submit Applicant Vote"}
+        {loading ? "Submitting…" : "Submit Applicant Feedback"}
       </button>
     </div>
   );
 }
 
 // ── MVP Form ──────────────────────────────────────────────────────────────────
+// Write in names with required feedback per name.
 function MvpForm({ pollData, onRefresh }) {
-  const [voterName, setVoterName]   = useState("");
-  const [locked, setLocked]         = useState(false);
-  const [staffRanks, setStaffRanks] = useState([]);
-  const [adminRanks, setAdminRanks] = useState([]);
-  const [submitted, setSubmitted]   = useState(false);
-  const [error, setError]           = useState("");
-  const [loading, setLoading]       = useState(false);
+  const [voterName, setVoterName] = useState("");
+  const [locked, setLocked]       = useState(false);
+  // staffEntries / adminEntries: [{ name, feedback }]
+  const [staffEntries, setStaffEntries] = useState([
+    { name: "", feedback: "" },
+    { name: "", feedback: "" },
+    { name: "", feedback: "" },
+  ]);
+  const [adminEntries, setAdminEntries] = useState([
+    { name: "", feedback: "" },
+    { name: "", feedback: "" },
+  ]);
+  const [submitted, setSubmitted] = useState(false);
+  const [error, setError]         = useState("");
+  const [loading, setLoading]     = useState(false);
 
   const mvp = pollData.mvp || {};
   const monthLabel = mvp.month ? `${mvp.month} ` : "";
-  const isSelfFn = n => voterName.trim().toLowerCase() === n.toLowerCase() && voterName.trim() !== "";
 
-  const handleRankClick = (name, ranks, setRanks, maxPicks) => {
-    if (isSelfFn(name)) return;
-    const idx = ranks.indexOf(name);
-    if (idx !== -1) setRanks(ranks.filter((_, i) => i !== idx));
-    else if (ranks.length < maxPicks) setRanks([...ranks, name]);
-  };
-  const handleNameChange = v => {
-    setVoterName(v);
-    const lower = v.trim().toLowerCase();
-    setStaffRanks(r => r.filter(n => n.toLowerCase() !== lower));
-    setAdminRanks(r => r.filter(n => n.toLowerCase() !== lower));
-  };
+  const updateEntry = (setter, i, field, val) =>
+    setter(prev => prev.map((e, idx) => idx === i ? { ...e, [field]: val } : e));
+
   const handleSubmit = async () => {
     if (!voterName.trim()) { setError("Please enter your username."); return; }
     if (!locked)           { setError("Please lock in your username first."); return; }
-    if (mvp.staffEnabled && staffRanks.length === 0) { setError("Please pick at least one Staff MVP."); return; }
-    if (mvp.adminEnabled && adminRanks.length === 0) { setError("Please pick at least one Admin MVP."); return; }
+
+    const filledStaff = staffEntries.filter(e => e.name.trim() !== "");
+    const filledAdmin = adminEntries.filter(e => e.name.trim() !== "");
+
+    if (mvp.staffEnabled && filledStaff.length === 0) { setError("Please enter at least one Staff MVP name."); return; }
+    if (mvp.adminEnabled && filledAdmin.length === 0) { setError("Please enter at least one Admin MVP name."); return; }
+
+    const missingStaff = filledStaff.find(e => !e.feedback.trim());
+    if (missingStaff) { setError(`Please fill in feedback for Staff MVP "${missingStaff.name}".`); return; }
+    const missingAdmin = filledAdmin.find(e => !e.feedback.trim());
+    if (missingAdmin) { setError(`Please fill in feedback for Admin MVP "${missingAdmin.name}".`); return; }
+
     setLoading(true); setError("");
-    const res = await apiFetch("/api/mvp-vote", { method: "POST", body: { voterName: voterName.trim(), staffRanks, adminRanks } });
+    const res = await apiFetch("/api/mvp-vote", {
+      method: "POST",
+      body: {
+        voterName: voterName.trim(),
+        staffPicks: filledStaff.map(e => ({ name: e.name.trim(), feedback: e.feedback.trim() })),
+        adminPicks: filledAdmin.map(e => ({ name: e.name.trim(), feedback: e.feedback.trim() })),
+      },
+    });
     setLoading(false);
     if (res.error) { setError(res.error); return; }
     setSubmitted(true); onRefresh();
@@ -343,176 +370,134 @@ function MvpForm({ pollData, onRefresh }) {
   if (submitted) return (
     <div style={{ textAlign: "center", padding: "60px 20px" }}>
       <div style={{ fontSize: 52, marginBottom: 14 }}>🏆</div>
-      <h2 style={{ fontFamily: "'Cinzel',serif", color: "#e8d5a3", fontSize: 22, marginBottom: 8 }}>MVP Vote Recorded</h2>
+      <h2 style={{ fontFamily: "'Cinzel',serif", color: "#e8d5a3", fontSize: 22, marginBottom: 8 }}>MVP Feedback Recorded</h2>
       <p style={{ color: "#888", fontSize: 14 }}>Thanks for voting!</p>
     </div>
   );
 
-  const RankBtn = ({ name, ranks, setRanks, maxPicks, pointsArr }) => {
-    const isSelf = isSelfFn(name), rankIdx = ranks.indexOf(name), picked = rankIdx !== -1;
-    const full = !picked && ranks.length >= maxPicks, color = picked ? RANK_COLORS[rankIdx] : null;
-    return (
-      <button onClick={() => handleRankClick(name, ranks, setRanks, maxPicks)} disabled={isSelf || full} style={{
-        padding: "11px 18px", borderRadius: 9, textAlign: "left", width: "100%",
-        border: `2px solid ${picked ? color : isSelf || full ? "rgba(255,255,255,0.04)" : "rgba(255,255,255,0.1)"}`,
-        background: picked ? `${color}18` : isSelf || full ? "rgba(255,255,255,0.01)" : "rgba(255,255,255,0.03)",
-        color: isSelf ? "#444" : full ? "#555" : picked ? color : "#ccc",
-        fontFamily: "'Cinzel',serif", fontWeight: 700, fontSize: 13,
-        cursor: isSelf || full ? "not-allowed" : "pointer", letterSpacing: 0.5, transition: "all 0.15s",
-        boxShadow: picked ? `0 0 14px ${color}33` : "none",
-        display: "flex", alignItems: "center", justifyContent: "space-between",
-      }}>
-        <span>{name}</span>
-        <span style={{ display: "flex", alignItems: "center", gap: 8 }}>
-          {isSelf && <span style={{ fontSize: 11, color: "#555", fontWeight: 400 }}>yourself</span>}
-          {full && !isSelf && <span style={{ fontSize: 11, color: "#555", fontWeight: 400 }}>max reached</span>}
-          {picked && <span style={{ background: color, color: "#1a1200", borderRadius: 6, padding: "2px 10px", fontSize: 12, fontWeight: 900, minWidth: 28, textAlign: "center" }}>
-            #{rankIdx + 1} · {pointsArr[rankIdx]}pt{pointsArr[rankIdx] !== 1 ? "s" : ""}
-          </span>}
-        </span>
-      </button>
-    );
-  };
+  const EntryBlock = ({ label, entries, setter, maxSlots, hints }) => (
+    <div style={{ marginBottom: 28 }}>
+      <div style={sectionHeaderStyle}>{label}</div>
+      {hints && hints.length > 0 && (
+        <div style={{ marginBottom: 12, padding: "10px 14px", borderRadius: 8, background: "rgba(245,197,66,0.05)", border: "1px solid rgba(245,197,66,0.15)", fontSize: 12, color: "#666" }}>
+          <span style={{ color: "#888", letterSpacing: 1 }}>CANDIDATES: </span>
+          {hints.map((h, i) => (
+            <span key={h}>
+              <span style={{ color: "#f5c542", fontWeight: 700 }}>{h}</span>
+              {i < hints.length - 1 && <span style={{ color: "#444" }}>, </span>}
+            </span>
+          ))}
+        </div>
+      )}
+      <p style={{ color: "#666", fontSize: 13, marginBottom: 14 }}>
+        Write in up to <strong style={{ color: "#ccc" }}>{maxSlots}</strong> name{maxSlots > 1 ? "s" : ""}. Feedback is required for each name entered.
+      </p>
+      {entries.map((entry, i) => (
+        <div key={i} style={{ ...cardStyle, marginBottom: 14 }}>
+          <div style={{ fontSize: 11, color: "#888", letterSpacing: 1, textTransform: "uppercase", marginBottom: 8 }}>
+            Pick {i + 1} {i === 0 ? <span style={{ color: "#555" }}>(required)</span> : <span style={{ color: "#555" }}>(optional)</span>}
+          </div>
+          <input
+            value={entry.name}
+            onChange={e => updateEntry(setter, i, "name", e.target.value)}
+            placeholder="Name…"
+            style={{
+              ...inputStyle, marginBottom: 10,
+              borderColor: i === 0 && !entry.name.trim() ? "rgba(255,100,100,0.3)" : "rgba(255,255,255,0.13)",
+            }}
+          />
+          {entry.name.trim() && (
+            <textarea
+              value={entry.feedback}
+              onChange={e => updateEntry(setter, i, "feedback", e.target.value)}
+              rows={3}
+              placeholder={`Why is ${entry.name.trim()} your MVP pick?`}
+              style={{
+                ...inputStyle, resize: "vertical", fontFamily: "'Crimson Pro', serif",
+                fontSize: 13, lineHeight: 1.6,
+                borderColor: !entry.feedback.trim() ? "rgba(255,100,100,0.3)" : "rgba(255,255,255,0.13)",
+              }}
+            />
+          )}
+        </div>
+      ))}
+    </div>
+  );
 
   return (
     <div>
-      {/* Banner image — shown above username box if set */}
       {mvp.image && (
         <div style={{ marginBottom: 20 }}>
-          <img
-            src={mvp.image} alt="MVP banner"
-            style={{
-              width: "100%", borderRadius: 10, display: "block",
-              border: "1px solid rgba(255,215,0,0.15)",
-              boxShadow: "0 4px 24px rgba(0,0,0,0.5)",
-              maxHeight: 220, objectFit: "cover",
-            }}
-          />
+          <img src={mvp.image} alt="MVP banner" style={{
+            width: "100%", borderRadius: 10, display: "block",
+            border: "1px solid rgba(255,215,0,0.15)",
+            boxShadow: "0 4px 24px rgba(0,0,0,0.5)",
+            maxHeight: 220, objectFit: "cover",
+          }} />
         </div>
       )}
 
-      <UsernameInput value={voterName} locked={locked} onChange={handleNameChange}
+      <UsernameInput value={voterName} locked={locked}
+        onChange={v => setVoterName(v)}
         onLock={() => voterName.trim() && setLocked(true)}
-        onUnlock={() => { setLocked(false); setStaffRanks([]); setAdminRanks([]); }} />
+        onUnlock={() => { setLocked(false); }} />
 
       {mvp.staffEnabled && (
-        <div style={{ marginBottom: 28 }}>
-          <div style={sectionHeaderStyle}>⭐ {monthLabel}Staff MVP</div>
-          <p style={{ color: "#666", fontSize: 13, marginBottom: 14 }}>Rank up to <strong style={{ color: "#ccc" }}>3</strong>. #1=3pts, #2=2pts, #3=1pt.</p>
-          <div style={{ display: "flex", gap: 8, marginBottom: 14 }}>
-            {[0,1,2].map(i => (
-              <div key={i} style={{ padding: "3px 12px", borderRadius: 6, fontSize: 12, fontWeight: 700,
-                border: `1px solid ${staffRanks[i] ? RANK_COLORS[i] : "rgba(255,255,255,0.08)"}`,
-                color: staffRanks[i] ? RANK_COLORS[i] : "#444",
-                background: staffRanks[i] ? `${RANK_COLORS[i]}15` : "transparent" }}>
-                {staffRanks[i] ? `#${i+1} ${staffRanks[i]}` : `#${i+1} —`}
-              </div>
-            ))}
-          </div>
-          <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
-            {(mvp.staffCandidates || []).map(n => <RankBtn key={n} name={n} ranks={staffRanks} setRanks={setStaffRanks} maxPicks={3} pointsArr={STAFF_POINTS} />)}
-          </div>
-        </div>
+        <EntryBlock
+          label={`⭐ ${monthLabel}Staff MVP`}
+          entries={staffEntries}
+          setter={setStaffEntries}
+          maxSlots={3}
+          hints={mvp.staffCandidates}
+        />
       )}
       {mvp.adminEnabled && (
-        <div style={{ marginBottom: 28 }}>
-          <div style={sectionHeaderStyle}>👑 {monthLabel}Admin MVP</div>
-          <p style={{ color: "#666", fontSize: 13, marginBottom: 14 }}>Rank up to <strong style={{ color: "#ccc" }}>2</strong>. #1=3pts, #2=2pts.</p>
-          <div style={{ display: "flex", gap: 8, marginBottom: 14 }}>
-            {[0,1].map(i => (
-              <div key={i} style={{ padding: "3px 12px", borderRadius: 6, fontSize: 12, fontWeight: 700,
-                border: `1px solid ${adminRanks[i] ? RANK_COLORS[i] : "rgba(255,255,255,0.08)"}`,
-                color: adminRanks[i] ? RANK_COLORS[i] : "#444",
-                background: adminRanks[i] ? `${RANK_COLORS[i]}15` : "transparent" }}>
-                {adminRanks[i] ? `#${i+1} ${adminRanks[i]}` : `#${i+1} —`}
-              </div>
-            ))}
-          </div>
-          <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
-            {(mvp.adminCandidates || []).map(n => <RankBtn key={n} name={n} ranks={adminRanks} setRanks={setAdminRanks} maxPicks={2} pointsArr={ADMIN_POINTS} />)}
-          </div>
-        </div>
+        <EntryBlock
+          label={`👑 ${monthLabel}Admin MVP`}
+          entries={adminEntries}
+          setter={setAdminEntries}
+          maxSlots={2}
+          hints={mvp.adminCandidates}
+        />
       )}
       {!mvp.staffEnabled && !mvp.adminEnabled && (
         <div style={{ textAlign: "center", padding: "40px 0", color: "#555", fontSize: 14 }}>MVP voting is not currently active.</div>
       )}
       {(mvp.staffEnabled || mvp.adminEnabled) && (
-        <>{error && <div style={errorStyle}>⚠ {error}</div>}
+        <>
+          {error && <div style={errorStyle}>⚠ {error}</div>}
           <button onClick={handleSubmit} disabled={loading} style={submitBtnStyle}>
-            {loading ? "Submitting…" : `Submit ${monthLabel}MVP Vote`}
-          </button></>
+            {loading ? "Submitting…" : `Submit ${monthLabel}MVP Feedback`}
+          </button>
+        </>
       )}
     </div>
   );
 }
 
-// ── Tally helpers ─────────────────────────────────────────────────────────────
-function tally(staff, votes) {
-  return staff.map(m => {
-    const totals = {}, votersByRole = {};
-    let count = 0;
-    for (const [voter, v] of Object.entries(votes)) {
-      const role = v[m.username]; if (!role) continue;
-      count++; totals[role] = (totals[role] || 0) + 1;
-      if (!votersByRole[role]) votersByRole[role] = [];
-      votersByRole[role].push(voter);
-    }
-    const pcts = {};
-    for (const [r, n] of Object.entries(totals)) pcts[r] = Math.round((n / count) * 100);
-    return { ...m, pcts, count, votersByRole };
-  });
-}
-function tallyMvp(candidates, votes, ranksKey, pointsArr) {
-  const points = {}, voteCounts = {}, voterDetails = {};
-  for (const n of candidates) { points[n] = 0; voteCounts[n] = 0; voterDetails[n] = []; }
-  for (const [voter, v] of Object.entries(votes)) {
-    (v[ranksKey] || []).forEach((name, idx) => {
-      if (points[name] !== undefined) {
-        points[name] += pointsArr[idx] || 0; voteCounts[name]++;
-        voterDetails[name].push(`${voter} (#${idx+1} · ${pointsArr[idx]}pt${pointsArr[idx]!==1?"s":""})`);
-      }
-    });
-  }
-  const totalPts = Object.values(points).reduce((a, b) => a + b, 0);
-  return Object.entries(points)
-    .map(([name, pts]) => ({ name, pts, votes: voteCounts[name], voterDetails: voterDetails[name], pct: totalPts ? Math.round((pts/totalPts)*100) : 0 }))
-    .sort((a, b) => b.pts - a.pts);
-}
-function tallyApplicants(candidates, votes) {
-  const counts = {}, voters = {};
-  for (const n of candidates) { counts[n] = 0; voters[n] = []; }
-  for (const [voter, v] of Object.entries(votes))
-    for (const name of (v.picks || []))
-      if (counts[name] !== undefined) { counts[name]++; voters[name].push(voter); }
-  const total = Object.values(counts).reduce((a, b) => a + b, 0);
-  return Object.entries(counts)
-    .map(([name, n]) => ({ name, count: n, voters: voters[name], pct: total ? Math.round((n/total)*100) : 0 }))
-    .sort((a, b) => b.count - a.count);
-}
-
 // ── Results Panel ─────────────────────────────────────────────────────────────
 function ResultsPanel({ pollData }) {
-  const [copied, setCopied]               = useState(false);
-  const [changes, setChanges]             = useState("");
-  const [expandedFeedback, setExpandedFeedback] = useState(false);
-  const tallied  = tally(pollData.staff, pollData.votes);
+  const [copied, setCopied]         = useState(false);
+  const [changes, setChanges]       = useState("");
+  const [expanded, setExpanded]     = useState({});
+
   const allVoters = Object.keys(pollData.votes);
 
-  const byRole = {};
-  for (const m of tallied) { if (!byRole[m.currentRole]) byRole[m.currentRole] = []; byRole[m.currentRole].push(m); }
-  const allPresentRoles = [...new Set(pollData.staff.map(m => m.currentRole))];
-  const roleOrder = [...ROLES, ...allPresentRoles.filter(r => !ROLES.includes(r))];
+  const toggleExpand = key => setExpanded(e => ({ ...e, [key]: !e[key] }));
 
   const buildDiscord = () => {
-    const lines = [`@here :AU_downvote: **Staff Results #${pollData.pollNumber}** :AU_greencheckmark:`];
-    for (const role of roleOrder) {
-      const members = byRole[role] || []; if (!members.length) continue;
-      const icon = role === "Support" ? ":555ss:" : role === "Moderator" ? ":55Mod:" : ":5Admin:";
-      lines.push(`\n${icon} **${role}s** -----------------------`);
-      for (const m of members) {
-        const parts = Object.entries(m.pcts).filter(([,v])=>v>0).sort((a,b)=>b[1]-a[1]).map(([r,v])=>`${v}% ${r}`).join("  ");
-        lines.push(`@${m.username}  ${parts || "No votes yet"}`);
+    const lines = [`@here :AU_downvote: **Staff Feedback Results #${pollData.pollNumber}** :AU_greencheckmark:`];
+    for (const m of pollData.staff) {
+      lines.push(`\n**${m.username}** (${m.currentRole})`);
+      let hasFeedback = false;
+      for (const [voter, v] of Object.entries(pollData.votes)) {
+        const fb = (v.feedbacks || {})[m.username];
+        if (fb && fb.trim()) {
+          lines.push(`• ${voter}: ${fb.trim()}`);
+          hasFeedback = true;
+        }
       }
+      if (!hasFeedback) lines.push("• No feedback yet");
     }
     if (changes.trim()) lines.push(`\n**Changes**\n:AU_upwardstrend: \n\`\`\`\n${changes.trim()}\n\`\`\``);
     return lines.join("\n");
@@ -520,64 +505,55 @@ function ResultsPanel({ pollData }) {
 
   const copy = () => { navigator.clipboard.writeText(buildDiscord()); setCopied(true); setTimeout(() => setCopied(false), 2200); };
 
-  const feedbackEntries = Object.entries(pollData.votes)
-    .map(([voter, v]) => ({ voter, feedback: v.__feedback__ }))
-    .filter(e => e.feedback && e.feedback.trim() && e.feedback.trim().toUpperCase() !== "N/A");
-
   return (
     <div>
       <div style={{ marginBottom: 16 }}>
-        <Tooltip lines={allVoters.length ? allVoters.map(v => `• ${v}`) : ["No votes yet"]}>
-          {allVoters.length} vote(s) recorded
+        <Tooltip lines={allVoters.length ? allVoters.map(v => `• ${v}`) : ["No submissions yet"]}>
+          {allVoters.length} submission(s) recorded
         </Tooltip>
       </div>
-      {tallied.map(m => (
-        <div key={m.username} style={{ ...cardStyle, marginBottom: 10 }}>
-          <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 8 }}>
-            <span style={{ fontFamily: "'Cinzel',serif", color: "#e8d5a3", fontWeight: 700 }}>@{m.username}</span>
-            <RoleBadge role={m.currentRole} />
-            {(m.voteOptions && m.voteOptions.length > 0) && <span style={{ fontSize: 10, color: "#555" }}>custom options</span>}
-            <span style={{ marginLeft: "auto" }}>
-              <Tooltip lines={m.count ? allVoters.map(v => { const role=(pollData.votes[v]||{})[m.username]; return role ? `${v} → ${role}` : null; }).filter(Boolean) : ["No votes yet"]}>
-                {m.count} vote(s)
-              </Tooltip>
-            </span>
-          </div>
-          <div style={{ display: "flex", flexWrap: "wrap", gap: 6 }}>
-            {Object.entries(m.pcts).filter(([,v])=>v>0).sort((a,b)=>b[1]-a[1]).map(([role, pct]) => {
-              const color = getRoleColor(role);
-              return <span key={role} style={{ background:`${color}22`, color, border:`1px solid ${color}55`, borderRadius:6, padding:"3px 12px", fontSize:13, fontWeight:700 }}>{pct}% {role}</span>;
-            })}
-            {!Object.keys(m.pcts).length && <span style={{ color: "#555", fontSize: 12 }}>No votes yet</span>}
-          </div>
-        </div>
-      ))}
 
-      {feedbackEntries.length > 0 && (
-        <div style={{ marginTop: 20, marginBottom: 20 }}>
-          <button onClick={() => setExpandedFeedback(e => !e)} style={{
-            width: "100%", padding: "10px 14px", borderRadius: 8, cursor: "pointer",
-            background: "rgba(255,255,255,0.04)", border: "1px solid rgba(255,255,255,0.1)",
-            color: "#aaa", fontFamily: "'Cinzel',serif", fontWeight: 700, fontSize: 12,
-            letterSpacing: 1, display: "flex", alignItems: "center", justifyContent: "space-between",
-          }}>
-            <span>💬 Voter Feedback ({feedbackEntries.length})</span>
-            <span>{expandedFeedback ? "▲" : "▼"}</span>
-          </button>
-          {expandedFeedback && (
-            <div style={{ marginTop: 8, display: "flex", flexDirection: "column", gap: 8 }}>
-              {feedbackEntries.map(({ voter, feedback }) => (
-                <div key={voter} style={{ background: "rgba(255,255,255,0.02)", border: "1px solid rgba(255,255,255,0.07)", borderRadius: 8, padding: "10px 14px" }}>
-                  <div style={{ fontSize: 11, color: "#f5c542", fontFamily: "'Cinzel',serif", marginBottom: 5 }}>{voter}</div>
-                  <div style={{ fontSize: 13, color: "#bbb", lineHeight: 1.6, whiteSpace: "pre-wrap" }}>{feedback}</div>
-                </div>
-              ))}
+      {pollData.staff.map(m => {
+        const feedbackEntries = Object.entries(pollData.votes)
+          .map(([voter, v]) => ({ voter, feedback: (v.feedbacks || {})[m.username] }))
+          .filter(e => e.feedback && e.feedback.trim());
+
+        return (
+          <div key={m.username} style={{ ...cardStyle, marginBottom: 10 }}>
+            <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 8 }}>
+              <span style={{ fontFamily: "'Cinzel',serif", color: "#e8d5a3", fontWeight: 700 }}>@{m.username}</span>
+              <RoleBadge role={m.currentRole} />
+              <span style={{ marginLeft: "auto", fontSize: 12, color: "#666" }}>{feedbackEntries.length} feedback</span>
             </div>
-          )}
-        </div>
-      )}
+            {feedbackEntries.length > 0 && (
+              <>
+                <button onClick={() => toggleExpand(m.username)} style={{
+                  width: "100%", padding: "7px 12px", borderRadius: 7, cursor: "pointer",
+                  background: "rgba(255,255,255,0.03)", border: "1px solid rgba(255,255,255,0.08)",
+                  color: "#888", fontFamily: "'Cinzel',serif", fontWeight: 700, fontSize: 11,
+                  letterSpacing: 1, display: "flex", alignItems: "center", justifyContent: "space-between",
+                }}>
+                  <span>💬 View Feedback</span>
+                  <span>{expanded[m.username] ? "▲" : "▼"}</span>
+                </button>
+                {expanded[m.username] && (
+                  <div style={{ marginTop: 8, display: "flex", flexDirection: "column", gap: 6 }}>
+                    {feedbackEntries.map(({ voter, feedback }) => (
+                      <div key={voter} style={{ background: "rgba(255,255,255,0.02)", border: "1px solid rgba(255,255,255,0.07)", borderRadius: 8, padding: "10px 14px" }}>
+                        <div style={{ fontSize: 11, color: "#f5c542", fontFamily: "'Cinzel',serif", marginBottom: 5 }}>{voter}</div>
+                        <div style={{ fontSize: 13, color: "#bbb", lineHeight: 1.6, whiteSpace: "pre-wrap" }}>{feedback}</div>
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </>
+            )}
+            {feedbackEntries.length === 0 && <span style={{ color: "#555", fontSize: 12 }}>No feedback yet</span>}
+          </div>
+        );
+      })}
 
-      <div style={{ marginTop: 8, marginBottom: 16 }}>
+      <div style={{ marginTop: 16, marginBottom: 16 }}>
         <label style={labelStyle}>Changes (one per line)</label>
         <textarea value={changes} onChange={e => setChanges(e.target.value)} rows={4}
           placeholder={"C4rdZ to Support\nBaekhyeon to Support"}
@@ -597,23 +573,63 @@ function ResultsPanel({ pollData }) {
 
 // ── Applicant Results Panel ───────────────────────────────────────────────────
 function ApplicantResultsPanel({ pollData }) {
-  const candidates = (pollData.applicants || {}).candidates || [];
-  const appVotes   = pollData.applicantVotes || {};
-  const results    = tallyApplicants(candidates, appVotes);
-  if (candidates.length === 0) return <div style={{ textAlign: "center", padding: "30px 0", color: "#555", fontSize: 14 }}>No applicant candidates configured.</div>;
+  const appVotes = pollData.applicantVotes || {};
+  const [expanded, setExpanded] = useState({});
+
+  // Aggregate: name -> [{ voter, feedback }]
+  const nameMap = {};
+  for (const [voter, v] of Object.entries(appVotes)) {
+    for (const pick of (v.picks || [])) {
+      const name = pick.name || pick; // support legacy plain-string picks
+      if (!nameMap[name]) nameMap[name] = [];
+      nameMap[name].push({ voter, feedback: pick.feedback || "" });
+    }
+  }
+  const results = Object.entries(nameMap)
+    .map(([name, entries]) => ({ name, count: entries.length, entries }))
+    .sort((a, b) => b.count - a.count);
+
+  if (results.length === 0) return (
+    <div style={{ textAlign: "center", padding: "30px 0", color: "#555", fontSize: 14 }}>No applicant submissions yet.</div>
+  );
+
   return (
     <div>
       <div style={{ marginBottom: 16 }}>
-        <Tooltip lines={Object.keys(appVotes).length ? Object.keys(appVotes).map(v => `• ${v}`) : ["No votes yet"]}>
-          {Object.keys(appVotes).length} vote(s) recorded
+        <Tooltip lines={Object.keys(appVotes).map(v => `• ${v}`)}>
+          {Object.keys(appVotes).length} submission(s) recorded
         </Tooltip>
       </div>
       {results.map((r, i) => (
-        <div key={r.name} style={{ ...cardStyle, marginBottom: 8, display: "flex", alignItems: "center", gap: 12 }}>
-          <span style={{ fontFamily: "'Cinzel',serif", fontSize: 18, color: i===0?"#60a5fa":"#555", width: 24, flexShrink: 0 }}>{i===0?"★":`${i+1}`}</span>
-          <span style={{ fontFamily: "'Cinzel',serif", color: "#e8d5a3", fontWeight: 700, flex: 1 }}>{r.name}</span>
-          <span style={{ color: "#60a5fa", fontWeight: 700, fontSize: 14, marginRight: 8 }}>{r.pct}%</span>
-          <Tooltip lines={r.voters.length ? r.voters.map(v=>`• ${v}`) : ["No votes yet"]}>{r.count} vote(s)</Tooltip>
+        <div key={r.name} style={{ ...cardStyle, marginBottom: 10 }}>
+          <div style={{ display: "flex", alignItems: "center", gap: 12, marginBottom: 8 }}>
+            <span style={{ fontFamily: "'Cinzel',serif", fontSize: 18, color: i === 0 ? "#60a5fa" : "#555", width: 24, flexShrink: 0 }}>{i === 0 ? "★" : `${i + 1}`}</span>
+            <span style={{ fontFamily: "'Cinzel',serif", color: "#e8d5a3", fontWeight: 700, flex: 1 }}>{r.name}</span>
+            <span style={{ color: "#60a5fa", fontWeight: 700, fontSize: 13 }}>{r.count} vote{r.count !== 1 ? "s" : ""}</span>
+          </div>
+          {r.entries.length > 0 && (
+            <>
+              <button onClick={() => setExpanded(e => ({ ...e, [r.name]: !e[r.name] }))} style={{
+                width: "100%", padding: "7px 12px", borderRadius: 7, cursor: "pointer",
+                background: "rgba(255,255,255,0.03)", border: "1px solid rgba(255,255,255,0.08)",
+                color: "#888", fontFamily: "'Cinzel',serif", fontWeight: 700, fontSize: 11,
+                letterSpacing: 1, display: "flex", alignItems: "center", justifyContent: "space-between",
+              }}>
+                <span>💬 View Feedback</span>
+                <span>{expanded[r.name] ? "▲" : "▼"}</span>
+              </button>
+              {expanded[r.name] && (
+                <div style={{ marginTop: 8, display: "flex", flexDirection: "column", gap: 6 }}>
+                  {r.entries.map(({ voter, feedback }) => (
+                    <div key={voter} style={{ background: "rgba(255,255,255,0.02)", border: "1px solid rgba(255,255,255,0.07)", borderRadius: 8, padding: "10px 14px" }}>
+                      <div style={{ fontSize: 11, color: "#60a5fa", fontFamily: "'Cinzel',serif", marginBottom: 5 }}>{voter}</div>
+                      {feedback && <div style={{ fontSize: 13, color: "#bbb", lineHeight: 1.6, whiteSpace: "pre-wrap" }}>{feedback}</div>}
+                    </div>
+                  ))}
+                </div>
+              )}
+            </>
+          )}
         </div>
       ))}
     </div>
@@ -624,49 +640,96 @@ function ApplicantResultsPanel({ pollData }) {
 function MvpResultsPanel({ pollData }) {
   const mvp = pollData.mvp || {}, mvpVotes = pollData.mvpVotes || {};
   const monthLabel = mvp.month ? `${mvp.month} ` : "";
-  const staffResults = tallyMvp(mvp.staffCandidates||[], mvpVotes, "staffRanks", STAFF_POINTS);
-  const adminResults = tallyMvp(mvp.adminCandidates||[], mvpVotes, "adminRanks", ADMIN_POINTS);
+  const [expanded, setExpanded] = useState({});
+
+  // Aggregate picks: { name -> [{ voter, feedback }] }
+  const aggregatePicks = (key) => {
+    const map = {};
+    for (const [voter, v] of Object.entries(mvpVotes)) {
+      for (const pick of (v[key] || [])) {
+        const name = pick.name || pick;
+        if (!map[name]) map[name] = [];
+        map[name].push({ voter, feedback: pick.feedback || "" });
+      }
+    }
+    return Object.entries(map)
+      .map(([name, entries]) => ({ name, count: entries.length, entries }))
+      .sort((a, b) => b.count - a.count);
+  };
+
+  const staffResults = aggregatePicks("staffPicks");
+  const adminResults = aggregatePicks("adminPicks");
+
+  const ResultList = ({ results, colorKey }) => results.map((r, i) => (
+    <div key={r.name} style={{ ...cardStyle, marginBottom: 8 }}>
+      <div style={{ display: "flex", alignItems: "center", gap: 12, marginBottom: 8 }}>
+        <span style={{ fontFamily: "'Cinzel',serif", fontSize: 18, color: RANK_COLORS[i] || "#555", width: 24, flexShrink: 0 }}>{i === 0 ? "★" : `${i + 1}`}</span>
+        <span style={{ fontFamily: "'Cinzel',serif", color: "#e8d5a3", fontWeight: 700, flex: 1 }}>{r.name}</span>
+        <span style={{ color: "#f5c542", fontWeight: 700, fontSize: 13 }}>{r.count} vote{r.count !== 1 ? "s" : ""}</span>
+      </div>
+      {r.entries.length > 0 && (
+        <>
+          <button onClick={() => setExpanded(e => ({ ...e, [`${colorKey}-${r.name}`]: !e[`${colorKey}-${r.name}`] }))} style={{
+            width: "100%", padding: "7px 12px", borderRadius: 7, cursor: "pointer",
+            background: "rgba(255,255,255,0.03)", border: "1px solid rgba(255,255,255,0.08)",
+            color: "#888", fontFamily: "'Cinzel',serif", fontWeight: 700, fontSize: 11,
+            letterSpacing: 1, display: "flex", alignItems: "center", justifyContent: "space-between",
+          }}>
+            <span>💬 View Feedback</span>
+            <span>{expanded[`${colorKey}-${r.name}`] ? "▲" : "▼"}</span>
+          </button>
+          {expanded[`${colorKey}-${r.name}`] && (
+            <div style={{ marginTop: 8, display: "flex", flexDirection: "column", gap: 6 }}>
+              {r.entries.map(({ voter, feedback }) => (
+                <div key={voter} style={{ background: "rgba(255,255,255,0.02)", border: "1px solid rgba(255,255,255,0.07)", borderRadius: 8, padding: "10px 14px" }}>
+                  <div style={{ fontSize: 11, color: "#f5c542", fontFamily: "'Cinzel',serif", marginBottom: 5 }}>{voter}</div>
+                  {feedback && <div style={{ fontSize: 13, color: "#bbb", lineHeight: 1.6, whiteSpace: "pre-wrap" }}>{feedback}</div>}
+                </div>
+              ))}
+            </div>
+          )}
+        </>
+      )}
+    </div>
+  ));
+
   return (
     <div>
       <div style={{ marginBottom: 16 }}>
-        <Tooltip lines={Object.keys(mvpVotes).length ? Object.keys(mvpVotes).map(v=>`• ${v}`) : ["No votes yet"]}>
-          {Object.keys(mvpVotes).length} MVP vote(s) recorded
+        <Tooltip lines={Object.keys(mvpVotes).map(v => `• ${v}`)}>
+          {Object.keys(mvpVotes).length} MVP submission(s) recorded
         </Tooltip>
       </div>
-      {mvp.staffEnabled && <div style={{ marginBottom: 24 }}>
-        <div style={sectionHeaderStyle}>⭐ {monthLabel}Staff MVP</div>
-        {staffResults.map((r,i) => (
-          <div key={r.name} style={{ ...cardStyle, marginBottom: 8, display:"flex", alignItems:"center", gap:12 }}>
-            <span style={{ fontFamily:"'Cinzel',serif", fontSize:18, color:RANK_COLORS[i]||"#555", width:24, flexShrink:0 }}>{i===0?"★":`${i+1}`}</span>
-            <span style={{ fontFamily:"'Cinzel',serif", color:"#e8d5a3", fontWeight:700, flex:1 }}>{r.name}</span>
-            <span style={{ color:"#f5c542", fontWeight:700, fontSize:14, marginRight:8 }}>{r.pts} pts</span>
-            <Tooltip lines={r.voterDetails.length?r.voterDetails.map(d=>`• ${d}`):["No votes yet"]}>{r.votes} vote(s)</Tooltip>
-          </div>
-        ))}
-      </div>}
-      {mvp.adminEnabled && <div style={{ marginBottom: 24 }}>
-        <div style={sectionHeaderStyle}>👑 {monthLabel}Admin MVP</div>
-        {adminResults.map((r,i) => (
-          <div key={r.name} style={{ ...cardStyle, marginBottom: 8, display:"flex", alignItems:"center", gap:12 }}>
-            <span style={{ fontFamily:"'Cinzel',serif", fontSize:18, color:RANK_COLORS[i]||"#555", width:24, flexShrink:0 }}>{i===0?"★":`${i+1}`}</span>
-            <span style={{ fontFamily:"'Cinzel',serif", color:"#e8d5a3", fontWeight:700, flex:1 }}>{r.name}</span>
-            <span style={{ color:"#f5c542", fontWeight:700, fontSize:14, marginRight:8 }}>{r.pts} pts</span>
-            <Tooltip lines={r.voterDetails.length?r.voterDetails.map(d=>`• ${d}`):["No votes yet"]}>{r.votes} vote(s)</Tooltip>
-          </div>
-        ))}
-      </div>}
-      {!mvp.staffEnabled && !mvp.adminEnabled && <div style={{ textAlign:"center", padding:"30px 0", color:"#555", fontSize:14 }}>MVP voting is not enabled.</div>}
+      {mvp.staffEnabled && (
+        <div style={{ marginBottom: 24 }}>
+          <div style={sectionHeaderStyle}>⭐ {monthLabel}Staff MVP</div>
+          {staffResults.length === 0
+            ? <div style={{ color: "#555", fontSize: 13 }}>No picks yet.</div>
+            : <ResultList results={staffResults} colorKey="staff" />}
+        </div>
+      )}
+      {mvp.adminEnabled && (
+        <div style={{ marginBottom: 24 }}>
+          <div style={sectionHeaderStyle}>👑 {monthLabel}Admin MVP</div>
+          {adminResults.length === 0
+            ? <div style={{ color: "#555", fontSize: 13 }}>No picks yet.</div>
+            : <ResultList results={adminResults} colorKey="admin" />}
+        </div>
+      )}
+      {!mvp.staffEnabled && !mvp.adminEnabled && (
+        <div style={{ textAlign: "center", padding: "30px 0", color: "#555", fontSize: 14 }}>MVP voting is not enabled.</div>
+      )}
     </div>
   );
 }
 
 // ── Vote Editor Panel ─────────────────────────────────────────────────────────
 function VoteEditorPanel({ pollData, adminPassword, onRefresh }) {
-  const [voteType, setVoteType]       = useState("staff");
-  const [editingKey, setEditingKey]   = useState(null);   // voter key being edited
-  const [editData, setEditData]       = useState(null);   // draft copy of their vote
-  const [saving, setSaving]           = useState(false);
-  const [msg, setMsg]                 = useState("");
+  const [voteType, setVoteType]     = useState("staff");
+  const [editingKey, setEditingKey] = useState(null);
+  const [editData, setEditData]     = useState(null);
+  const [saving, setSaving]         = useState(false);
+  const [msg, setMsg]               = useState("");
 
   const votes = voteType === "staff"     ? pollData.votes
               : voteType === "mvp"       ? (pollData.mvpVotes || {})
@@ -674,11 +737,7 @@ function VoteEditorPanel({ pollData, adminPassword, onRefresh }) {
 
   const voterKeys = Object.keys(votes);
 
-  const startEdit = (key) => {
-    setEditingKey(key);
-    setEditData(JSON.parse(JSON.stringify(votes[key]))); // deep clone
-    setMsg("");
-  };
+  const startEdit = key => { setEditingKey(key); setEditData(JSON.parse(JSON.stringify(votes[key]))); setMsg(""); };
   const cancelEdit = () => { setEditingKey(null); setEditData(null); };
 
   const saveEdit = async () => {
@@ -693,17 +752,13 @@ function VoteEditorPanel({ pollData, adminPassword, onRefresh }) {
     onRefresh(); setTimeout(() => setMsg(""), 2000);
   };
 
-  const deleteVote = async (key) => {
-    if (!window.confirm(`Delete ${key}'s vote?`)) return;
+  const deleteVote = async key => {
+    if (!window.confirm(`Delete ${key}'s submission?`)) return;
     setSaving(true);
-    await apiFetch("/api/admin/vote", {
-      method: "DELETE",
-      body: { adminPassword, voteType, voterKey: key },
-    });
+    await apiFetch("/api/admin/vote", { method: "DELETE", body: { adminPassword, voteType, voterKey: key } });
     setSaving(false); onRefresh();
   };
 
-  // ── Render the editable fields depending on vote type ──
   const renderEditor = () => {
     if (!editData) return null;
 
@@ -711,159 +766,98 @@ function VoteEditorPanel({ pollData, adminPassword, onRefresh }) {
       return (
         <div>
           <div style={{ marginBottom: 12, fontSize: 12, color: "#888" }}>
-            Editing votes cast by <strong style={{ color: "#f5c542" }}>{editingKey}</strong>
+            Editing feedback by <strong style={{ color: "#f5c542" }}>{editingKey}</strong>
           </div>
-          {pollData.staff.map(m => {
-            const voteOptions = (m.voteOptions && m.voteOptions.length > 0) ? m.voteOptions : ROLES;
-            const current = editData[m.username];
-            return (
-              <div key={m.username} style={{ marginBottom: 10 }}>
-                <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 6 }}>
-                  <span style={{ fontFamily: "'Cinzel',serif", color: "#e8d5a3", fontSize: 13, minWidth: 120 }}>{m.username}</span>
-                  <RoleBadge role={m.currentRole} />
-                </div>
-                <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
-                  <button
-                    onClick={() => setEditData(d => { const n={...d}; delete n[m.username]; return n; })}
-                    style={{
-                      padding: "5px 12px", borderRadius: 6, fontSize: 11, cursor: "pointer",
-                      border: `1px solid ${!current ? "#f5c542" : "rgba(255,255,255,0.1)"}`,
-                      background: !current ? "rgba(245,197,66,0.15)" : "rgba(255,255,255,0.03)",
-                      color: !current ? "#f5c542" : "#555",
-                    }}
-                  >— no vote</button>
-                  {voteOptions.map(role => {
-                    const sel = current === role;
-                    const color = getRoleColor(role);
-                    return (
-                      <button key={role}
-                        onClick={() => setEditData(d => ({ ...d, [m.username]: role }))}
-                        style={{
-                          padding: "5px 12px", borderRadius: 6, fontSize: 11, cursor: "pointer",
-                          border: `1px solid ${sel ? color : "rgba(255,255,255,0.1)"}`,
-                          background: sel ? `${color}22` : "rgba(255,255,255,0.03)",
-                          color: sel ? color : "#777",
-                          fontWeight: sel ? 700 : 400,
-                        }}>{role}</button>
-                    );
-                  })}
-                </div>
+          {pollData.staff.map(m => (
+            <div key={m.username} style={{ marginBottom: 14 }}>
+              <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 6 }}>
+                <span style={{ fontFamily: "'Cinzel',serif", color: "#e8d5a3", fontSize: 13, minWidth: 120 }}>{m.username}</span>
+                <RoleBadge role={m.currentRole} />
               </div>
-            );
-          })}
-          {/* Feedback */}
-          <div style={{ marginTop: 14 }}>
-            <label style={labelStyle}>Feedback</label>
-            <textarea value={editData.__feedback__ || ""} rows={3}
-              onChange={e => setEditData(d => ({ ...d, __feedback__: e.target.value }))}
-              style={{ ...inputStyle, resize: "vertical", fontSize: 12, fontFamily: "'Crimson Pro',serif" }} />
-          </div>
-        </div>
-      );
-    }
-
-    if (voteType === "mvp") {
-      const mvp = pollData.mvp || {};
-      const updateRanks = (key, newRanks) => setEditData(d => ({ ...d, [key]: newRanks }));
-      return (
-        <div>
-          <div style={{ marginBottom: 12, fontSize: 12, color: "#888" }}>
-            Editing MVP vote by <strong style={{ color: "#f5c542" }}>{editingKey}</strong>
-          </div>
-          {mvp.staffEnabled && (
-            <div style={{ marginBottom: 16 }}>
-              <label style={labelStyle}>Staff Rankings (drag order = rank)</label>
-              <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
-                {(mvp.staffCandidates || []).map(name => {
-                  const ranks = editData.staffRanks || [];
-                  const idx = ranks.indexOf(name);
-                  const picked = idx !== -1;
-                  const color = picked ? RANK_COLORS[idx] : null;
-                  return (
-                    <div key={name} style={{ display: "flex", alignItems: "center", gap: 8 }}>
-                      <button onClick={() => {
-                        const r = editData.staffRanks || [];
-                        const i = r.indexOf(name);
-                        if (i !== -1) updateRanks("staffRanks", r.filter((_,x)=>x!==i));
-                        else if (r.length < 3) updateRanks("staffRanks", [...r, name]);
-                      }} style={{
-                        flex: 1, padding: "7px 12px", borderRadius: 7, textAlign: "left", cursor: "pointer",
-                        border: `1px solid ${picked ? color : "rgba(255,255,255,0.1)"}`,
-                        background: picked ? `${color}18` : "rgba(255,255,255,0.03)",
-                        color: picked ? color : "#aaa", fontSize: 12, fontWeight: picked ? 700 : 400,
-                      }}>
-                        {picked ? `#${idx+1} ` : ""}{name}
-                      </button>
-                    </div>
-                  );
-                })}
-              </div>
+              <textarea
+                value={(editData.feedbacks || {})[m.username] || ""}
+                onChange={e => setEditData(d => ({ ...d, feedbacks: { ...(d.feedbacks || {}), [m.username]: e.target.value } }))}
+                rows={2}
+                style={{ ...inputStyle, resize: "vertical", fontSize: 12, fontFamily: "'Crimson Pro',serif" }}
+              />
             </div>
-          )}
-          {mvp.adminEnabled && (
-            <div style={{ marginBottom: 16 }}>
-              <label style={labelStyle}>Admin Rankings</label>
-              <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
-                {(mvp.adminCandidates || []).map(name => {
-                  const ranks = editData.adminRanks || [];
-                  const idx = ranks.indexOf(name);
-                  const picked = idx !== -1;
-                  const color = picked ? RANK_COLORS[idx] : null;
-                  return (
-                    <div key={name} style={{ display: "flex", alignItems: "center", gap: 8 }}>
-                      <button onClick={() => {
-                        const r = editData.adminRanks || [];
-                        const i = r.indexOf(name);
-                        if (i !== -1) updateRanks("adminRanks", r.filter((_,x)=>x!==i));
-                        else if (r.length < 2) updateRanks("adminRanks", [...r, name]);
-                      }} style={{
-                        flex: 1, padding: "7px 12px", borderRadius: 7, textAlign: "left", cursor: "pointer",
-                        border: `1px solid ${picked ? color : "rgba(255,255,255,0.1)"}`,
-                        background: picked ? `${color}18` : "rgba(255,255,255,0.03)",
-                        color: picked ? color : "#aaa", fontSize: 12, fontWeight: picked ? 700 : 400,
-                      }}>
-                        {picked ? `#${idx+1} ` : ""}{name}
-                      </button>
-                    </div>
-                  );
-                })}
-              </div>
-            </div>
-          )}
+          ))}
         </div>
       );
     }
 
     if (voteType === "applicant") {
-      const candidates = (pollData.applicants || {}).candidates || [];
-      const currentPicks = editData.picks || [];
+      const picks = editData.picks || [];
       return (
         <div>
           <div style={{ marginBottom: 12, fontSize: 12, color: "#888" }}>
-            Editing applicant vote by <strong style={{ color: "#f5c542" }}>{editingKey}</strong>
+            Editing applicant submission by <strong style={{ color: "#f5c542" }}>{editingKey}</strong>
           </div>
-          <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
-            {candidates.map(name => {
-              const sel = currentPicks.includes(name);
-              return (
-                <button key={name} onClick={() => {
-                  setEditData(d => {
-                    const p = d.picks || [];
-                    return { ...d, picks: sel ? p.filter(n=>n!==name) : p.length < 3 ? [...p, name] : p };
-                  });
-                }} style={{
-                  padding: "8px 14px", borderRadius: 7, textAlign: "left", cursor: "pointer",
-                  border: `2px solid ${sel ? "#60a5fa" : "rgba(255,255,255,0.1)"}`,
-                  background: sel ? "rgba(96,165,250,0.12)" : "rgba(255,255,255,0.03)",
-                  color: sel ? "#60a5fa" : "#aaa", fontSize: 12, fontWeight: sel ? 700 : 400,
-                  display: "flex", justifyContent: "space-between",
-                }}>
-                  <span>{name}</span>
-                  {sel && <span>✓</span>}
-                </button>
-              );
-            })}
+          {picks.map((pick, i) => (
+            <div key={i} style={{ ...cardStyle, marginBottom: 10 }}>
+              <div style={{ fontSize: 11, color: "#888", marginBottom: 6 }}>Pick {i + 1}</div>
+              <input
+                value={pick.name || ""}
+                onChange={e => setEditData(d => { const p = [...d.picks]; p[i] = { ...p[i], name: e.target.value }; return { ...d, picks: p }; })}
+                placeholder="Name"
+                style={{ ...inputStyle, marginBottom: 8, fontSize: 12 }}
+              />
+              <textarea
+                value={pick.feedback || ""}
+                onChange={e => setEditData(d => { const p = [...d.picks]; p[i] = { ...p[i], feedback: e.target.value }; return { ...d, picks: p }; })}
+                rows={2}
+                placeholder="Feedback"
+                style={{ ...inputStyle, resize: "vertical", fontSize: 12, fontFamily: "'Crimson Pro',serif" }}
+              />
+              <button onClick={() => setEditData(d => ({ ...d, picks: d.picks.filter((_, idx) => idx !== i) }))}
+                style={{ ...removeBtnStyle, marginTop: 6, fontSize: 11 }}>✕ Remove</button>
+            </div>
+          ))}
+          {picks.length < 3 && (
+            <button onClick={() => setEditData(d => ({ ...d, picks: [...(d.picks || []), { name: "", feedback: "" }] }))}
+              style={{ ...addBtnStyle, fontSize: 12, padding: "7px 14px" }}>+ Add Pick</button>
+          )}
+        </div>
+      );
+    }
+
+    if (voteType === "mvp") {
+      const renderPickList = (key, label) => {
+        const picks = editData[key] || [];
+        return (
+          <div style={{ marginBottom: 16 }}>
+            <label style={labelStyle}>{label}</label>
+            {picks.map((pick, i) => (
+              <div key={i} style={{ ...cardStyle, marginBottom: 8 }}>
+                <input
+                  value={pick.name || ""}
+                  onChange={e => setEditData(d => { const p = [...(d[key] || [])]; p[i] = { ...p[i], name: e.target.value }; return { ...d, [key]: p }; })}
+                  placeholder="Name"
+                  style={{ ...inputStyle, marginBottom: 8, fontSize: 12 }}
+                />
+                <textarea
+                  value={pick.feedback || ""}
+                  onChange={e => setEditData(d => { const p = [...(d[key] || [])]; p[i] = { ...p[i], feedback: e.target.value }; return { ...d, [key]: p }; })}
+                  rows={2}
+                  placeholder="Feedback"
+                  style={{ ...inputStyle, resize: "vertical", fontSize: 12, fontFamily: "'Crimson Pro',serif" }}
+                />
+                <button onClick={() => setEditData(d => ({ ...d, [key]: (d[key] || []).filter((_, idx) => idx !== i) }))}
+                  style={{ ...removeBtnStyle, marginTop: 6, fontSize: 11 }}>✕ Remove</button>
+              </div>
+            ))}
+            <button onClick={() => setEditData(d => ({ ...d, [key]: [...(d[key] || []), { name: "", feedback: "" }] }))}
+              style={{ ...addBtnStyle, fontSize: 12, padding: "7px 14px" }}>+ Add</button>
           </div>
+        );
+      };
+      return (
+        <div>
+          <div style={{ marginBottom: 12, fontSize: 12, color: "#888" }}>
+            Editing MVP submission by <strong style={{ color: "#f5c542" }}>{editingKey}</strong>
+          </div>
+          {renderPickList("staffPicks", "Staff Picks")}
+          {renderPickList("adminPicks", "Admin Picks")}
         </div>
       );
     }
@@ -871,7 +865,6 @@ function VoteEditorPanel({ pollData, adminPassword, onRefresh }) {
 
   return (
     <div>
-      {/* Vote type selector */}
       <div style={{ display: "flex", gap: 6, marginBottom: 16 }}>
         {[["staff","⚔ Staff"],["mvp","🏆 MVP"],["applicant","📋 Applicants"]].map(([k,label]) => (
           <button key={k} onClick={() => { setVoteType(k); cancelEdit(); }} style={{
@@ -887,26 +880,26 @@ function VoteEditorPanel({ pollData, adminPassword, onRefresh }) {
       {msg && <div style={{ marginBottom: 12, color: msg.startsWith("✓") ? "#4ade80" : "#f87171", fontSize: 13 }}>{msg}</div>}
 
       {voterKeys.length === 0 && (
-        <div style={{ textAlign: "center", padding: "30px 0", color: "#555", fontSize: 14 }}>No votes recorded yet.</div>
+        <div style={{ textAlign: "center", padding: "30px 0", color: "#555", fontSize: 14 }}>No submissions recorded yet.</div>
       )}
 
-      {/* Voter list */}
       {!editingKey && voterKeys.map(key => (
         <div key={key} style={{ ...cardStyle, display: "flex", alignItems: "center", gap: 10, marginBottom: 8 }}>
           <span style={{ fontFamily: "'Cinzel',serif", color: "#e8d5a3", fontSize: 13, flex: 1 }}>{key}</span>
-          {/* Quick summary */}
           {voteType === "staff" && (
             <span style={{ fontSize: 11, color: "#666", flex: 2 }}>
-              {pollData.staff.map(m => votes[key]?.[m.username]).filter(Boolean).join(", ") || "—"}
+              {Object.keys(votes[key]?.feedbacks || {}).length} feedback entries
             </span>
           )}
           {voteType === "mvp" && (
             <span style={{ fontSize: 11, color: "#666", flex: 2 }}>
-              S: {(votes[key]?.staffRanks||[]).join(", ")||"—"} | A: {(votes[key]?.adminRanks||[]).join(", ")||"—"}
+              S: {(votes[key]?.staffPicks||[]).map(p=>p.name||p).join(", ")||"—"} | A: {(votes[key]?.adminPicks||[]).map(p=>p.name||p).join(", ")||"—"}
             </span>
           )}
           {voteType === "applicant" && (
-            <span style={{ fontSize: 11, color: "#666", flex: 2 }}>{(votes[key]?.picks||[]).join(", ")||"—"}</span>
+            <span style={{ fontSize: 11, color: "#666", flex: 2 }}>
+              {(votes[key]?.picks||[]).map(p=>p.name||p).join(", ")||"—"}
+            </span>
           )}
           <button onClick={() => startEdit(key)} style={{
             padding: "5px 12px", borderRadius: 6, cursor: "pointer", fontSize: 12,
@@ -919,12 +912,8 @@ function VoteEditorPanel({ pollData, adminPassword, onRefresh }) {
         </div>
       ))}
 
-      {/* Edit modal */}
       {editingKey && (
-        <div style={{
-          background: "rgba(0,0,0,0.4)", border: "1px solid rgba(255,215,0,0.15)",
-          borderRadius: 12, padding: "18px 16px", marginBottom: 12,
-        }}>
+        <div style={{ background: "rgba(0,0,0,0.4)", border: "1px solid rgba(255,215,0,0.15)", borderRadius: 12, padding: "18px 16px", marginBottom: 12 }}>
           {renderEditor()}
           <div style={{ display: "flex", gap: 8, marginTop: 16 }}>
             <button onClick={saveEdit} disabled={saving} style={{ ...submitBtnStyle, flex: 1 }}>
@@ -957,60 +946,12 @@ function ToggleSwitch({ value, onChange }) {
   );
 }
 
-// ── Vote Options Editor ───────────────────────────────────────────────────────
-function VoteOptionsEditor({ options, onChange }) {
-  const [newOpt, setNewOpt] = useState("");
-  const usingCustom = options !== null && options !== undefined;
-  const displayOpts = usingCustom ? options : [...ROLES];
-
-  const activate = () => { if (!usingCustom) onChange([...ROLES]); };
-  const addOpt = () => {
-    const v = newOpt.trim(); if (!v) return;
-    const base = usingCustom ? displayOpts : [...ROLES];
-    onChange([...base, v]); setNewOpt("");
-  };
-  const removeOpt = i => onChange(displayOpts.filter((_, idx) => idx !== i));
-  const resetToDefault = () => onChange(null);
-
-  return (
-    <div style={{ marginTop: 10, padding: "12px 14px", borderRadius: 8, background: "rgba(255,255,255,0.02)", border: "1px solid rgba(255,255,255,0.07)" }}>
-      <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 10 }}>
-        <span style={{ fontSize: 11, color: "#888", letterSpacing: 1, textTransform: "uppercase" }}>
-          Vote Options{" "}
-          {!usingCustom ? <span style={{ color: "#555" }}>(using defaults)</span> : <span style={{ color: "#c084fc" }}>(custom)</span>}
-        </span>
-        {usingCustom && <button onClick={resetToDefault} style={{ fontSize: 10, color: "#888", background: "rgba(255,255,255,0.05)", border: "1px solid rgba(255,255,255,0.1)", borderRadius: 4, padding: "2px 8px", cursor: "pointer" }}>Reset to defaults</button>}
-      </div>
-      <div style={{ display: "flex", flexWrap: "wrap", gap: 6, marginBottom: 10 }}>
-        {displayOpts.map((opt, i) => {
-          const color = getRoleColor(opt);
-          return (
-            <div key={i} style={{ display: "flex", alignItems: "center", gap: 5, background: `${color}18`, border: `1px solid ${color}55`, borderRadius: 6, padding: "3px 8px 3px 10px" }}>
-              <span style={{ fontSize: 12, color, fontWeight: 700 }}>{opt}</span>
-              <button onClick={() => { activate(); removeOpt(i); }} style={{ background: "none", border: "none", color: "#666", cursor: "pointer", fontSize: 12, padding: "0 2px", lineHeight: 1 }}>✕</button>
-            </div>
-          );
-        })}
-        {displayOpts.length === 0 && <span style={{ fontSize: 11, color: "#555" }}>No options — add some below</span>}
-      </div>
-      <div style={{ display: "flex", gap: 6 }}>
-        <input value={newOpt} onChange={e => setNewOpt(e.target.value)}
-          onKeyDown={e => { if (e.key === "Enter") { activate(); addOpt(); } }}
-          placeholder="Add option (e.g. Head Mod)"
-          style={{ ...inputStyle, flex: 1, fontSize: 12, padding: "6px 10px" }} />
-        <button onClick={() => { activate(); addOpt(); }} style={{ ...addBtnStyle, fontSize: 12, padding: "6px 12px" }}>+ Add</button>
-      </div>
-    </div>
-  );
-}
-
 // ── Admin Settings Panel ──────────────────────────────────────────────────────
 function SettingsPanel({ pollData, adminPassword, onRefresh }) {
   const [pollNumber, setPollNumber]           = useState(pollData.pollNumber);
   const [staff, setStaff]                     = useState(pollData.staff.map(m => ({ ...m })));
   const [newUser, setNewUser]                 = useState("");
   const [newRole, setNewRole]                 = useState("Support");
-  const [expandedMember, setExpandedMember]   = useState(null);
   const mvp0 = pollData.mvp || {}, app0 = pollData.applicants || {};
   const [mvpMonth, setMvpMonth]               = useState(mvp0.month || "");
   const [mvpImage, setMvpImage]               = useState(mvp0.image || "");
@@ -1025,6 +966,7 @@ function SettingsPanel({ pollData, adminPassword, onRefresh }) {
   const [saving, setSaving]                   = useState(false);
   const [msg, setMsg]                         = useState("");
 
+  const ROLES = ["Support", "Moderator", "Admin"];
   const monthPreview = mvpMonth.trim() ? `${mvpMonth.trim()} ` : "";
 
   const save = async () => {
@@ -1042,12 +984,11 @@ function SettingsPanel({ pollData, adminPassword, onRefresh }) {
 
   const addMember = () => {
     if (!newUser.trim()) return;
-    setStaff(s => [...s, { username: newUser.trim(), currentRole: newRole, voteOptions: null }]);
+    setStaff(s => [...s, { username: newUser.trim(), currentRole: newRole }]);
     setNewUser("");
   };
-  const removeMember = i => { setStaff(s => s.filter((_,idx)=>idx!==i)); if (expandedMember===i) setExpandedMember(null); };
+  const removeMember = i => setStaff(s => s.filter((_,idx)=>idx!==i));
   const updateMember = (i,f,v) => setStaff(s => s.map((m,idx)=>idx===i?{...m,[f]:v}:m));
-  const setMemberVoteOptions = (i,opts) => setStaff(s => s.map((m,idx)=>idx===i?{...m,voteOptions:opts}:m));
 
   const addStaffCand    = () => { if(!newStaffName.trim())return; setStaffCandidates(c=>[...c,newStaffName.trim()]); setNewStaffName(""); };
   const removeStaffCand = i  => setStaffCandidates(c=>c.filter((_,idx)=>idx!==i));
@@ -1063,38 +1004,22 @@ function SettingsPanel({ pollData, adminPassword, onRefresh }) {
         <input type="number" value={pollNumber} onChange={e=>setPollNumber(e.target.value)} style={{ ...inputStyle, width: 100 }} />
       </div>
 
-      <label style={labelStyle}>Staff Members</label>
+      {/* Staff Members */}
+      <label style={labelStyle}>Staff Members (Username Boxes)</label>
+      <p style={{ color: "#555", fontSize: 12, marginBottom: 10, lineHeight: 1.5 }}>
+        These are the usernames that appear as feedback boxes on the Cast Vote tab.
+      </p>
       <div style={{ marginBottom: 8 }}>
-        {staff.map((m,i) => {
-          const isExpanded = expandedMember===i, hasCustom = m.voteOptions!==null && m.voteOptions!==undefined;
-          const roleDropdownOpts = [...new Set([...ROLES, ...(m.voteOptions||[])])];
-          return (
-            <div key={i} style={{ marginBottom: 6 }}>
-              <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
-                <input value={m.username} onChange={e=>updateMember(i,"username",e.target.value)} style={{ ...inputStyle, flex: 1 }} />
-                <select value={m.currentRole} onChange={e=>updateMember(i,"currentRole",e.target.value)} style={{ ...inputStyle, width: 130 }}>
-                  {roleDropdownOpts.map(r=><option key={r}>{r}</option>)}
-                </select>
-                <button onClick={()=>setExpandedMember(isExpanded?null:i)} title="Customise vote options" style={{
-                  padding:"6px 10px", borderRadius:6, cursor:"pointer", fontSize:13, flexShrink:0, transition:"all 0.15s",
-                  background: hasCustom?"rgba(192,132,252,0.15)":"rgba(255,255,255,0.05)",
-                  border: hasCustom?"1px solid rgba(192,132,252,0.4)":"1px solid rgba(255,255,255,0.1)",
-                  color: hasCustom?"#c084fc":"#666",
-                }}>{isExpanded?"▲":"⚙"}</button>
-                <button onClick={()=>removeMember(i)} style={removeBtnStyle}>✕</button>
-              </div>
-              {isExpanded && <VoteOptionsEditor options={m.voteOptions??null} onChange={opts=>setMemberVoteOptions(i,opts)} />}
-            </div>
-          );
-        })}
+        {staff.map((m,i) => (
+          <div key={i} style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 6 }}>
+            <input value={m.username} onChange={e=>updateMember(i,"username",e.target.value)} style={{ ...inputStyle, flex: 1 }} />
+            <select value={m.currentRole} onChange={e=>updateMember(i,"currentRole",e.target.value)} style={{ ...inputStyle, width: 130 }}>
+              {ROLES.map(r=><option key={r}>{r}</option>)}
+            </select>
+            <button onClick={()=>removeMember(i)} style={removeBtnStyle}>✕</button>
+          </div>
+        ))}
       </div>
-
-      <div style={{ marginBottom: 16, padding: "10px 14px", borderRadius: 8, background: "rgba(255,215,0,0.04)", border: "1px solid rgba(255,215,0,0.1)", fontSize: 12, color: "#666", lineHeight: 1.6 }}>
-        <span style={{ color: "#888" }}>Default options:</span>{" "}
-        {ROLES.map((r,i)=>{const color=getRoleColor(r);return(<span key={r}><span style={{color}}>{r}</span>{i<ROLES.length-1&&<span style={{color:"#444"}}>, </span>}</span>);})}
-        <span style={{ color: "#555" }}> — click ⚙ to override per member.</span>
-      </div>
-
       <div style={{ display: "flex", gap: 8, marginBottom: 32 }}>
         <input value={newUser} onChange={e=>setNewUser(e.target.value)} placeholder="New username"
           style={{ ...inputStyle, flex: 1 }} onKeyDown={e=>e.key==="Enter"&&addMember()} />
@@ -1106,7 +1031,10 @@ function SettingsPanel({ pollData, adminPassword, onRefresh }) {
 
       {/* Applicants */}
       <div style={{ borderTop: "1px solid rgba(255,215,0,0.12)", paddingTop: 24, marginBottom: 8 }}>
-        <div style={{ fontFamily:"'Cinzel',serif", color:"#e8d5a3", fontSize:15, fontWeight:700, marginBottom:18, letterSpacing:1 }}>📋 Staff Applicants</div>
+        <div style={{ fontFamily:"'Cinzel',serif", color:"#e8d5a3", fontSize:15, fontWeight:700, marginBottom:6, letterSpacing:1 }}>📋 Staff Applicants</div>
+        <p style={{ color: "#555", fontSize: 12, marginBottom: 14, lineHeight: 1.5 }}>
+          These names appear as hints on the Applicants tab. Staff can still write in any name.
+        </p>
         <div style={{ marginBottom: 10 }}>
           {appCandidates.map((name,i)=>(
             <div key={i} style={{ display:"flex", alignItems:"center", gap:8, marginBottom:6 }}>
@@ -1129,59 +1057,34 @@ function SettingsPanel({ pollData, adminPassword, onRefresh }) {
         <div style={{ marginBottom: 22 }}>
           <label style={labelStyle}>Month</label>
           <input value={mvpMonth} onChange={e=>setMvpMonth(e.target.value)} placeholder="e.g. March" style={{ ...inputStyle, width:"100%" }} />
-          {mvpMonth.trim()&&<div style={{ marginTop:8, fontSize:12, color:"#888" }}>Preview: <span style={{color:"#f5c542"}}>{monthPreview}MVP Poll</span>{" · "}<span style={{color:"#a8b2c0"}}>{monthPreview}Staff MVP</span>{" · "}<span style={{color:"#a8b2c0"}}>{monthPreview}Admin MVP</span></div>}
+          {mvpMonth.trim()&&<div style={{ marginTop:8, fontSize:12, color:"#888" }}>Preview: <span style={{color:"#f5c542"}}>{monthPreview}MVP Poll</span></div>}
         </div>
 
-        {/* ── MVP Banner Image ── */}
         <div style={{ marginBottom: 24 }}>
-          <label style={labelStyle}>Banner Image <span style={{ color:"#555", textTransform:"none", letterSpacing:0 }}>(shown above username box on MVP tab)</span></label>
+          <label style={labelStyle}>Banner Image</label>
           {mvpImage ? (
             <div style={{ marginBottom: 10 }}>
-              <img
-                src={mvpImage} alt="MVP banner preview"
-                style={{ width:"100%", maxHeight:180, objectFit:"cover", borderRadius:8, border:"1px solid rgba(255,215,0,0.15)", display:"block" }}
-              />
-              <button
-                onClick={() => setMvpImage("")}
-                style={{ marginTop:8, padding:"6px 16px", borderRadius:6, cursor:"pointer", fontSize:12,
-                  background:"#ff444418", border:"1px solid #ff4444", color:"#ff8888" }}
-              >✕ Remove Image</button>
+              <img src={mvpImage} alt="MVP banner preview" style={{ width:"100%", maxHeight:180, objectFit:"cover", borderRadius:8, border:"1px solid rgba(255,215,0,0.15)", display:"block" }} />
+              <button onClick={() => setMvpImage("")} style={{ marginTop:8, padding:"6px 16px", borderRadius:6, cursor:"pointer", fontSize:12, background:"#ff444418", border:"1px solid #ff4444", color:"#ff8888" }}>✕ Remove Image</button>
             </div>
           ) : (
-            <div style={{ marginBottom: 10, padding:"18px", borderRadius:8, border:"2px dashed rgba(255,255,255,0.1)", textAlign:"center", color:"#555", fontSize:13 }}>
-              No image set
-            </div>
+            <div style={{ marginBottom: 10, padding:"18px", borderRadius:8, border:"2px dashed rgba(255,255,255,0.1)", textAlign:"center", color:"#555", fontSize:13 }}>No image set</div>
           )}
-          <label style={{
-            display:"flex", alignItems:"center", gap:8, cursor:"pointer",
-            padding:"9px 14px", borderRadius:8,
-            background:"rgba(255,215,0,0.08)", border:"1px solid rgba(255,215,0,0.25)", color:"#ffd700",
-            fontFamily:"'Cinzel',serif", fontWeight:700, fontSize:12, letterSpacing:0.5,
-            width:"fit-content",
-          }}>
+          <label style={{ display:"flex", alignItems:"center", gap:8, cursor:"pointer", padding:"9px 14px", borderRadius:8, background:"rgba(255,215,0,0.08)", border:"1px solid rgba(255,215,0,0.25)", color:"#ffd700", fontFamily:"'Cinzel',serif", fontWeight:700, fontSize:12, letterSpacing:0.5, width:"fit-content" }}>
             📁 {mvpImage ? "Change Image" : "Upload Image"}
-            <input
-              type="file" accept="image/*"
-              style={{ display:"none" }}
-              onChange={e => {
-                const file = e.target.files?.[0];
-                if (!file) return;
-                const reader = new FileReader();
-                reader.onload = ev => setMvpImage(ev.target.result);
-                reader.readAsDataURL(file);
-                // reset input so same file can be re-selected
-                e.target.value = "";
-              }}
-            />
+            <input type="file" accept="image/*" style={{ display:"none" }} onChange={e => { const file=e.target.files?.[0]; if(!file)return; const reader=new FileReader(); reader.onload=ev=>setMvpImage(ev.target.result); reader.readAsDataURL(file); e.target.value=""; }} />
           </label>
-          <div style={{ marginTop:6, fontSize:11, color:"#555" }}>Recommended: wide/landscape image. JPG, PNG, GIF, WebP supported.</div>
         </div>
+
         <div style={{ marginBottom: 24 }}>
           <div style={{ display:"flex", alignItems:"center", gap:12, marginBottom:14 }}>
             <label style={{ ...labelStyle, marginBottom:0 }}>Staff MVP Section</label>
             <ToggleSwitch value={staffEnabled} onChange={setStaffEnabled} />
             <span style={{ fontSize:11, color:staffEnabled?"#4ade80":"#666" }}>{staffEnabled?"ON":"OFF"}</span>
           </div>
+          <p style={{ color: "#555", fontSize: 12, marginBottom: 10, lineHeight: 1.5 }}>
+            These names appear as reference candidates on the MVP tab. Staff write in any name.
+          </p>
           {staffEnabled&&(<>
             <div style={{ marginBottom:10 }}>{staffCandidates.map((name,i)=>(
               <div key={i} style={{ display:"flex", alignItems:"center", gap:8, marginBottom:6 }}>
@@ -1196,6 +1099,7 @@ function SettingsPanel({ pollData, adminPassword, onRefresh }) {
             </div>
           </>)}
         </div>
+
         <div style={{ marginBottom: 24 }}>
           <div style={{ display:"flex", alignItems:"center", gap:12, marginBottom:14 }}>
             <label style={{ ...labelStyle, marginBottom:0 }}>Admin MVP Section</label>
@@ -1242,7 +1146,7 @@ function AdminPanel({ pollData, onRefresh }) {
   if (!unlocked) return (
     <div style={{ textAlign: "center", padding: "28px 0" }}>
       <div style={{ fontSize: 40, marginBottom: 14 }}>🔒</div>
-      <p style={{ color: "#888", marginBottom: 14, fontSize: 14 }}>Tyler access required</p>
+      <p style={{ color: "#888", marginBottom: 14, fontSize: 14 }}>Admin access required</p>
       <input type="password" value={pw} onChange={e=>setPw(e.target.value)}
         onKeyDown={e=>e.key==="Enter"&&unlock()}
         placeholder="Password" style={{ ...inputStyle, width:"100%", textAlign:"center", marginBottom:12 }} />
@@ -1250,7 +1154,7 @@ function AdminPanel({ pollData, onRefresh }) {
     </div>
   );
 
-  const subTabs = [["results","📊 Results"],["applicants","📋 Applicants"],["mvp","🏆 MVP"],["edit","✏ Edit Votes"],["settings","⚙️ Settings"]];
+  const subTabs = [["results","📊 Results"],["applicants","📋 Applicants"],["mvp","🏆 MVP"],["edit","✏ Edit"],["settings","⚙️ Settings"]];
 
   return (
     <div>
@@ -1273,7 +1177,7 @@ function AdminPanel({ pollData, onRefresh }) {
       {subTab==="results"    && <ResultsPanel          pollData={pollData} />}
       {subTab==="applicants" && <ApplicantResultsPanel pollData={pollData} />}
       {subTab==="mvp"        && <MvpResultsPanel       pollData={pollData} />}
-      {subTab==="edit"       && <VoteEditorPanel        pollData={pollData} adminPassword={pw} onRefresh={onRefresh} />}
+      {subTab==="edit"       && <VoteEditorPanel       pollData={pollData} adminPassword={pw} onRefresh={onRefresh} />}
       {subTab==="settings"   && <SettingsPanel         pollData={pollData} adminPassword={pw} onRefresh={onRefresh} />}
     </div>
   );
@@ -1281,7 +1185,7 @@ function AdminPanel({ pollData, onRefresh }) {
 
 // ── Shared styles ─────────────────────────────────────────────────────────────
 const labelStyle      = { display:"block", color:"#aaa", fontSize:11, marginBottom:6, letterSpacing:1.5, textTransform:"uppercase" };
-const inputStyle      = { width:"100%", background:"rgba(255,255,255,0.05)", border:"1px solid rgba(255,255,255,0.13)", borderRadius:8, color:"#e0e0e0", padding:"9px 13px", fontSize:14 };
+const inputStyle      = { width:"100%", background:"rgba(255,255,255,0.05)", border:"1px solid rgba(255,255,255,0.13)", borderRadius:8, color:"#e0e0e0", padding:"9px 13px", fontSize:14, boxSizing:"border-box" };
 const cardStyle       = { background:"rgba(255,255,255,0.03)", border:"1px solid rgba(255,255,255,0.08)", borderRadius:10, padding:"14px 16px", marginBottom:12 };
 const errorStyle      = { background:"#ff444418", border:"1px solid #ff4444", borderRadius:8, padding:"10px 14px", color:"#ff8888", fontSize:13, marginBottom:14 };
 const submitBtnStyle  = { width:"100%", padding:"13px", borderRadius:10, border:"none", background:"linear-gradient(135deg,#b8860b,#ffd700)", color:"#1a1200", fontFamily:"'Cinzel',serif", fontWeight:700, fontSize:15, cursor:"pointer", letterSpacing:1, transition:"all 0.3s" };
@@ -1305,7 +1209,7 @@ export default function App() {
 
   const mvp = pollData.mvp || {}, applicants = pollData.applicants || {};
   const showMvpTab  = mvp.staffEnabled || mvp.adminEnabled;
-  const showAppTab  = (applicants.candidates || []).length > 0;
+  const showAppTab  = (applicants.candidates || []).length > 0 || true; // always show if you want write-ins
   const monthLabel  = mvp.month ? `${mvp.month} ` : "";
 
   const tabs = [
@@ -1331,7 +1235,6 @@ export default function App() {
       <Particles />
       <div style={{ position:"relative", zIndex:1, minHeight:"100vh", background:"radial-gradient(ellipse at 20% 10%,rgba(184,134,11,.07) 0%,transparent 60%),radial-gradient(ellipse at 80% 90%,rgba(59,130,246,.05) 0%,transparent 60%)", padding:"32px 16px 70px", fontFamily:"'Crimson Pro',serif", color:"#ccc" }}>
         <div style={{ maxWidth:660, margin:"0 auto", animation:"fadeIn 0.55s ease" }}>
-
           <div style={{ textAlign:"center", marginBottom:30 }}>
             <div style={{ fontSize:11, letterSpacing:4, color:"#b8860b", textTransform:"uppercase", marginBottom:8 }}>Reason Private Server</div>
             <h1 style={{ fontFamily:"'Cinzel',serif", fontSize:27, fontWeight:900, color:"#e8d5a3", letterSpacing:2, lineHeight:1.2 }}>Staff Polls</h1>
