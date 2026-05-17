@@ -109,15 +109,12 @@ app.post("/api/vote", async (req, res) => {
     if (data.voterNames.includes(key))
       return res.status(409).json({ error: "You have already submitted feedback." });
 
-    // Validate feedback for every staff member except self
-    const REQUIRED_FIELDS = ["strengths", "weaknesses", "rank"];
+    // Only "rank" is required per staff member (strengths/weaknesses optional)
     for (const m of data.staff) {
       if (m.username.toLowerCase() === key) continue;
       const fb = feedbacks[m.username] || {};
-      for (const field of REQUIRED_FIELDS) {
-        if (!fb[field] || !fb[field].trim())
-          return res.status(400).json({ error: `Missing "${field}" feedback for ${m.username}` });
-      }
+      if (!fb.rank || !fb.rank.trim())
+        return res.status(400).json({ error: `Missing rank feedback for ${m.username}` });
     }
 
     data.votes[key] = { feedbacks };
