@@ -6,7 +6,11 @@ const ADMIN_PASSWORD = process.env.REACT_APP_ADMIN_PASSWORD || "Jac098!";
 const RANK_COLORS  = ["#f5c542", "#a8b2c0", "#cd7f32"];
 
 function getRoleColor(role) {
-  const colours = ["#c084fc", "#34d399", "#fb923c", "#f472b6", "#38bdf8", "#a3e635", "#e879f9"];
+  if (role === "Support")   return "#60a5fa"; // blue
+  if (role === "Moderator") return "#e879f9"; // magenta
+  if (role === "Admin")     return "#f5c542"; // gold
+  // fallback for any custom roles
+  const colours = ["#c084fc", "#34d399", "#fb923c", "#38bdf8", "#a3e635"];
   let hash = 0;
   for (let i = 0; i < role.length; i++) hash = role.charCodeAt(i) + ((hash << 5) - hash);
   return colours[Math.abs(hash) % colours.length];
@@ -113,10 +117,31 @@ function UsernameInput({ value, locked, onChange, onLock, onUnlock }) {
 }
 
 // ── Voting Form (Staff Feedback) ──────────────────────────────────────────────
+const FEEDBACK_FIELDS = [
+  {
+    key: "strengths",
+    label: "Strengths",
+    sublabel: "Positive feedback you'd like to relay to this member",
+    placeholder: "What does this member do well? What are their standout qualities?",
+  },
+  {
+    key: "weaknesses",
+    label: "Weaknesses",
+    sublabel: "Feedback you'd leave this member to improve",
+    placeholder: "What areas could this member improve on? Any constructive criticism?",
+  },
+  {
+    key: "rank",
+    label: "Rank this player aligns with the most",
+    sublabel: "Does this member possess the traits and skills of a Support, Moderator, or Admin?",
+    placeholder: "Which rank best fits this member's current performance and why?",
+  },
+];
+
 function VotingForm({ pollData, onRefresh }) {
   const [voterName, setVoterName] = useState("");
   const [locked, setLocked]       = useState(false);
-  // feedbacks: { [username]: string }
+  // feedbacks: { [username]: { strengths, weaknesses, rank } }
   const [feedbacks, setFeedbacks] = useState({});
   const [submitted, setSubmitted] = useState(false);
   const [error, setError]         = useState("");
@@ -124,15 +149,22 @@ function VotingForm({ pollData, onRefresh }) {
 
   const isSelfFn = u => voterName.trim().toLowerCase() === u.toLowerCase() && voterName.trim() !== "";
 
-  const setFeedback = (username, val) => setFeedbacks(f => ({ ...f, [username]: val }));
+  const setField = (username, field, val) =>
+    setFeedbacks(f => ({ ...f, [username]: { ...(f[username] || {}), [field]: val } }));
 
-  // All non-self members must have feedback filled in
-  const allFilled = pollData.staff.every(m => isSelfFn(m.username) || (feedbacks[m.username] || "").trim() !== "");
+  const getField = (username, field) => (feedbacks[username] || {})[field] || "";
+
+  // All non-self members must have all 3 fields filled
+  const allFilled = pollData.staff.every(m => {
+    if (isSelfFn(m.username)) return true;
+    const fb = feedbacks[m.username] || {};
+    return FEEDBACK_FIELDS.every(f => (fb[f.key] || "").trim() !== "");
+  });
 
   const handleSubmit = async () => {
     if (!voterName.trim()) { setError("Please enter your username."); return; }
     if (!locked)           { setError("Please lock in your username first (click ⏎)."); return; }
-    if (!allFilled)        { setError("Please fill in feedback for every staff member."); return; }
+    if (!allFilled)        { setError("Please fill in all required feedback fields for every staff member."); return; }
     setLoading(true); setError("");
     const res = await apiFetch("/api/vote", {
       method: "POST",
@@ -157,12 +189,14 @@ function VotingForm({ pollData, onRefresh }) {
         onChange={v => setVoterName(v)}
         onLock={() => voterName.trim() && setLocked(true)}
         onUnlock={() => setLocked(false)} />
-      <p style={{ color: "#666", fontSize: 13, marginBottom: 18 }}>Leave feedback for each staff member below.</p>
+      <p style={{ color: "#666", fontSize: 13, marginBottom: 18 }}>
+        Fill in all three feedback sections for each staff member below.
+      </p>
 
       {pollData.staff.map(m => {
         const isSelf = isSelfFn(m.username);
         return (
-          <div key={m.username} style={{ ...cardStyle, position: "relative" }}>
+          <div key={m.username} style={{ ...cardStyle, position: "relative", marginBottom: 20 }}>
             {isSelf && (
               <div style={{
                 position: "absolute", inset: 0, display: "flex", alignItems: "center",
@@ -170,42 +204,66 @@ function VotingForm({ pollData, onRefresh }) {
                 background: "rgba(0,0,0,0.6)", fontSize: 12, color: "#666", letterSpacing: 1,
               }}>You cannot leave feedback for yourself</div>
             )}
-            <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 10, opacity: isSelf ? 0.3 : 1 }}>
+            <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 14, opacity: isSelf ? 0.3 : 1 }}>
               <span style={{ fontFamily: "'Cinzel',serif", fontWeight: 700, fontSize: 15, color: "#e8d5a3" }}>{m.username}</span>
               <RoleBadge role={m.currentRole} />
             </div>
-            <textarea
-              disabled={isSelf}
-              value={feedbacks[m.username] || ""}
-              onChange={e => setFeedback(m.username, e.target.value)}
-              rows={3}
-              placeholder={`Feedback for ${m.username}…`}
-              style={{
-                ...inputStyle, resize: "vertical", fontFamily: "'Crimson Pro', serif",
-                fontSize: 13, lineHeight: 1.6, opacity: isSelf ? 0.3 : 1,
-                borderColor: !isSelf && !(feedbacks[m.username] || "").trim()
-                  ? "rgba(255,100,100,0.3)" : "rgba(255,255,255,0.13)",
-              }}
-            />
+
+            {FEEDBACK_FIELDS.map(field => {
+              const val = getField(m.username, field.key);
+              const missing = !isSelf && val.trim() === "";
+              return (
+                <div key={field.key} style={{ marginBottom: 14, opacity: isSelf ? 0.3 : 1 }}>
+                  <label style={{ display: "block", marginBottom: 4 }}>
+                    <span style={{ color: "#aaa", fontSize: 11, letterSpacing: 1.2, textTransform: "uppercase", fontWeight: 700 }}>
+                      {field.label}
+                    </span>
+                    {" "}
+                    <span style={{ color: "#ff6b6b", fontSize: 11, fontStyle: "italic" }}>*Required</span>
+                    <span style={{ display: "block", color: "#555", fontSize: 11, marginTop: 2, textTransform: "none", letterSpacing: 0 }}>
+                      {field.sublabel}
+                    </span>
+                  </label>
+                  <textarea
+                    disabled={isSelf}
+                    value={val}
+                    onChange={e => setField(m.username, field.key, e.target.value)}
+                    rows={3}
+                    placeholder={field.placeholder}
+                    style={{
+                      ...inputStyle, resize: "vertical", fontFamily: "'Crimson Pro', serif",
+                      fontSize: 13, lineHeight: 1.6,
+                      borderColor: missing ? "rgba(255,107,107,0.45)" : "rgba(255,255,255,0.13)",
+                    }}
+                  />
+                </div>
+              );
+            })}
           </div>
         );
       })}
 
       {error && <div style={errorStyle}>⚠ {error}</div>}
-      <button onClick={handleSubmit} disabled={loading} style={submitBtnStyle}>
+      <button onClick={handleSubmit} disabled={loading || !allFilled} style={{
+        ...submitBtnStyle,
+        opacity: (!loading && allFilled) ? 1 : 0.45,
+        cursor: (!loading && allFilled) ? "pointer" : "not-allowed",
+      }}>
         {loading ? "Submitting…" : "Submit Feedback"}
       </button>
+      {!allFilled && (
+        <p style={{ textAlign: "center", color: "#555", fontSize: 12, marginTop: 8 }}>
+          All fields marked <span style={{ color: "#ff6b6b" }}>*Required</span> must be filled before submitting.
+        </p>
+      )}
     </div>
   );
 }
 
 // ── Applicants Form ───────────────────────────────────────────────────────────
-// Staff write in up to 3 names, each with a feedback box.
-// Admin-set candidates (from settings) are shown as a reference / can be pre-filled.
 function ApplicantsForm({ pollData, onRefresh }) {
   const [voterName, setVoterName] = useState("");
   const [locked, setLocked]       = useState(false);
-  // entries: [{ name: string, feedback: string }]
   const [entries, setEntries]     = useState([
     { name: "", feedback: "" },
     { name: "", feedback: "" },
@@ -214,10 +272,6 @@ function ApplicantsForm({ pollData, onRefresh }) {
   const [submitted, setSubmitted] = useState(false);
   const [error, setError]         = useState("");
   const [loading, setLoading]     = useState(false);
-
-  const MAX = 3;
-  // Admin-provided candidate names shown as hints
-  const hints = (pollData.applicants || {}).candidates || [];
 
   const updateEntry = (i, field, val) =>
     setEntries(prev => prev.map((e, idx) => idx === i ? { ...e, [field]: val } : e));
@@ -258,50 +312,56 @@ function ApplicantsForm({ pollData, onRefresh }) {
         onUnlock={() => { setLocked(false); }} />
 
       <div style={sectionHeaderStyle}>📋 Staff Applicants</div>
-      <p style={{ color: "#666", fontSize: 13, marginBottom: 6 }}>
-        Write in up to <strong style={{ color: "#ccc" }}>3 applicant names</strong> and leave feedback for each.
+      <p style={{ color: "#666", fontSize: 13, marginBottom: 16 }}>
+        Write in up to <strong style={{ color: "#ccc" }}>3 applicant names</strong> and leave feedback for each one you nominate.
       </p>
 
-      {hints.length > 0 && (
-        <div style={{ marginBottom: 16, padding: "10px 14px", borderRadius: 8, background: "rgba(96,165,250,0.05)", border: "1px solid rgba(96,165,250,0.15)", fontSize: 12, color: "#666" }}>
-          <span style={{ color: "#888", letterSpacing: 1 }}>CURRENT APPLICANTS: </span>
-          {hints.map((h, i) => (
-            <span key={h}>
-              <span style={{ color: "#60a5fa", fontWeight: 700 }}>{h}</span>
-              {i < hints.length - 1 && <span style={{ color: "#444" }}>, </span>}
-            </span>
-          ))}
-        </div>
-      )}
-
       {entries.map((entry, i) => (
-        <div key={i} style={{ ...cardStyle, marginBottom: 14 }}>
-          <div style={{ fontSize: 11, color: "#888", letterSpacing: 1, textTransform: "uppercase", marginBottom: 8 }}>
-            Applicant {i + 1} {i === 0 && <span style={{ color: "#555" }}>(required)</span>}
-            {i > 0 && <span style={{ color: "#555" }}>(optional)</span>}
+        <div key={i} style={{ ...cardStyle, marginBottom: 16 }}>
+          <div style={{ fontSize: 11, color: "#888", letterSpacing: 1, textTransform: "uppercase", marginBottom: 10 }}>
+            Applicant {i + 1}{" "}
+            {i === 0
+              ? <span style={{ color: "#555" }}>(required)</span>
+              : <span style={{ color: "#555" }}>(optional)</span>}
           </div>
+
+          {/* Name input */}
           <input
             value={entry.name}
             onChange={e => updateEntry(i, "name", e.target.value)}
-            placeholder={`Applicant name${hints[i] ? ` (e.g. ${hints[i]})` : ""}`}
+            placeholder="Applicant name (e.g. IWantStaff22, PickMe45, None needed)"
             style={{
-              ...inputStyle, marginBottom: 10,
-              borderColor: i === 0 && !entry.name.trim() ? "rgba(255,100,100,0.3)" : "rgba(255,255,255,0.13)",
+              ...inputStyle, marginBottom: 12,
+              borderColor: i === 0 && !entry.name.trim() ? "rgba(255,107,107,0.45)" : "rgba(255,255,255,0.13)",
             }}
           />
-          {entry.name.trim() && (
+
+          {/* Feedback input — always visible */}
+          <div>
+            <label style={{ display: "block", marginBottom: 4 }}>
+              <span style={{ color: "#aaa", fontSize: 11, letterSpacing: 1.2, textTransform: "uppercase", fontWeight: 700 }}>
+                Why this applicant?
+              </span>
+              {entry.name.trim() && (
+                <>{" "}<span style={{ color: "#ff6b6b", fontSize: 11, fontStyle: "italic" }}>*Required</span></>
+              )}
+              <span style={{ display: "block", color: "#555", fontSize: 11, marginTop: 2, textTransform: "none", letterSpacing: 0 }}>
+                What makes them stand out? Why should they be selected over anyone else?
+              </span>
+            </label>
             <textarea
               value={entry.feedback}
               onChange={e => updateEntry(i, "feedback", e.target.value)}
               rows={3}
-              placeholder={`Why are you supporting ${entry.name.trim()}?`}
+              placeholder="What makes this player stand out over everyone else? What skills do they possess that could be useful for this team?"
               style={{
                 ...inputStyle, resize: "vertical", fontFamily: "'Crimson Pro', serif",
                 fontSize: 13, lineHeight: 1.6,
-                borderColor: !entry.feedback.trim() ? "rgba(255,100,100,0.3)" : "rgba(255,255,255,0.13)",
+                borderColor: entry.name.trim() && !entry.feedback.trim()
+                  ? "rgba(255,107,107,0.45)" : "rgba(255,255,255,0.13)",
               }}
             />
-          )}
+          </div>
         </div>
       ))}
 
@@ -491,8 +551,15 @@ function ResultsPanel({ pollData }) {
       lines.push(`\n**${m.username}** (${m.currentRole})`);
       let hasFeedback = false;
       for (const [voter, v] of Object.entries(pollData.votes)) {
-        const fb = (v.feedbacks || {})[m.username];
-        if (fb && fb.trim()) {
+        const fb = v.feedbacks?.[m.username];
+        if (fb && typeof fb === "object" && (fb.strengths || fb.weaknesses || fb.rank)) {
+          lines.push(`• ${voter}:`);
+          if (fb.strengths) lines.push(`  ✅ Strengths: ${fb.strengths.trim()}`);
+          if (fb.weaknesses) lines.push(`  ⚠ Weaknesses: ${fb.weaknesses.trim()}`);
+          if (fb.rank) lines.push(`  🏷 Rank Alignment: ${fb.rank.trim()}`);
+          hasFeedback = true;
+        } else if (fb && typeof fb === "string" && fb.trim()) {
+          // legacy single-string fallback
           lines.push(`• ${voter}: ${fb.trim()}`);
           hasFeedback = true;
         }
@@ -515,8 +582,8 @@ function ResultsPanel({ pollData }) {
 
       {pollData.staff.map(m => {
         const feedbackEntries = Object.entries(pollData.votes)
-          .map(([voter, v]) => ({ voter, feedback: (v.feedbacks || {})[m.username] }))
-          .filter(e => e.feedback && e.feedback.trim());
+          .map(([voter, v]) => ({ voter, fb: (v.feedbacks || {})[m.username] }))
+          .filter(e => e.fb);
 
         return (
           <div key={m.username} style={{ ...cardStyle, marginBottom: 10 }}>
@@ -537,11 +604,34 @@ function ResultsPanel({ pollData }) {
                   <span>{expanded[m.username] ? "▲" : "▼"}</span>
                 </button>
                 {expanded[m.username] && (
-                  <div style={{ marginTop: 8, display: "flex", flexDirection: "column", gap: 6 }}>
-                    {feedbackEntries.map(({ voter, feedback }) => (
+                  <div style={{ marginTop: 8, display: "flex", flexDirection: "column", gap: 8 }}>
+                    {feedbackEntries.map(({ voter, fb }) => (
                       <div key={voter} style={{ background: "rgba(255,255,255,0.02)", border: "1px solid rgba(255,255,255,0.07)", borderRadius: 8, padding: "10px 14px" }}>
-                        <div style={{ fontSize: 11, color: "#f5c542", fontFamily: "'Cinzel',serif", marginBottom: 5 }}>{voter}</div>
-                        <div style={{ fontSize: 13, color: "#bbb", lineHeight: 1.6, whiteSpace: "pre-wrap" }}>{feedback}</div>
+                        <div style={{ fontSize: 11, color: "#f5c542", fontFamily: "'Cinzel',serif", marginBottom: 8 }}>{voter}</div>
+                        {typeof fb === "object" ? (
+                          <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+                            {fb.strengths && (
+                              <div>
+                                <div style={{ fontSize: 10, color: "#4ade80", letterSpacing: 1, textTransform: "uppercase", marginBottom: 3 }}>✅ Strengths</div>
+                                <div style={{ fontSize: 13, color: "#bbb", lineHeight: 1.6, whiteSpace: "pre-wrap" }}>{fb.strengths}</div>
+                              </div>
+                            )}
+                            {fb.weaknesses && (
+                              <div>
+                                <div style={{ fontSize: 10, color: "#fb923c", letterSpacing: 1, textTransform: "uppercase", marginBottom: 3 }}>⚠ Weaknesses</div>
+                                <div style={{ fontSize: 13, color: "#bbb", lineHeight: 1.6, whiteSpace: "pre-wrap" }}>{fb.weaknesses}</div>
+                              </div>
+                            )}
+                            {fb.rank && (
+                              <div>
+                                <div style={{ fontSize: 10, color: "#a8b2c0", letterSpacing: 1, textTransform: "uppercase", marginBottom: 3 }}>🏷 Rank Alignment</div>
+                                <div style={{ fontSize: 13, color: "#bbb", lineHeight: 1.6, whiteSpace: "pre-wrap" }}>{fb.rank}</div>
+                              </div>
+                            )}
+                          </div>
+                        ) : (
+                          <div style={{ fontSize: 13, color: "#bbb", lineHeight: 1.6, whiteSpace: "pre-wrap" }}>{fb}</div>
+                        )}
                       </div>
                     ))}
                   </div>
