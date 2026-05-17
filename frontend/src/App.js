@@ -122,13 +122,13 @@ const FEEDBACK_FIELDS = [
     key: "strengths",
     label: "Strengths",
     sublabel: "Positive feedback you'd like to relay to this member",
-    placeholder: "What does this member do well? What are their standout qualities?",
+    placeholder: "What does this member do well? What are their standout qualities as staff?",
   },
   {
     key: "weaknesses",
     label: "Weaknesses",
     sublabel: "Feedback you'd leave this member to improve",
-    placeholder: "What areas could this member improve on? Any constructive criticism?",
+    placeholder: "What areas could this member improve on? Any constructive criticism for them?",
   },
   {
     key: "rank",
