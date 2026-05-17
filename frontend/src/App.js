@@ -373,106 +373,68 @@ function ApplicantsForm({ pollData, onRefresh }) {
   );
 }
 
-// ── MVP Entry Block (top-level to prevent remount-on-render focus loss) ───────
-function MvpEntryBlock({ label, entries, onUpdate, maxSlots, hints }) {
-  return (
-    <div style={{ marginBottom: 28 }}>
-      <div style={sectionHeaderStyle}>{label}</div>
-      {hints && hints.length > 0 && (
-        <div style={{ marginBottom: 12, padding: "10px 14px", borderRadius: 8, background: "rgba(245,197,66,0.05)", border: "1px solid rgba(245,197,66,0.15)", fontSize: 12, color: "#666" }}>
-          <span style={{ color: "#888", letterSpacing: 1 }}>CANDIDATES: </span>
-          {hints.map((h, i) => (
-            <span key={h}>
-              <span style={{ color: "#f5c542", fontWeight: 700 }}>{h}</span>
-              {i < hints.length - 1 && <span style={{ color: "#444" }}>, </span>}
-            </span>
-          ))}
-        </div>
-      )}
-      <p style={{ color: "#666", fontSize: 13, marginBottom: 14 }}>
-        Write in up to <strong style={{ color: "#ccc" }}>{maxSlots}</strong> name{maxSlots > 1 ? "s" : ""}. Feedback is required for each name entered.
-      </p>
-      {entries.map((entry, i) => (
-        <div key={i} style={{ ...cardStyle, marginBottom: 14 }}>
-          <div style={{ fontSize: 11, color: "#888", letterSpacing: 1, textTransform: "uppercase", marginBottom: 8 }}>
-            Pick {i + 1}{" "}
-            {i === 0 ? <span style={{ color: "#555" }}>(required)</span> : <span style={{ color: "#555" }}>(optional)</span>}
-          </div>
-          <input
-            value={entry.name}
-            onChange={e => onUpdate(i, "name", e.target.value)}
-            placeholder="Name…"
-            style={{
-              ...inputStyle, marginBottom: 10,
-              borderColor: i === 0 && !entry.name.trim() ? "rgba(255,100,100,0.3)" : "rgba(255,255,255,0.13)",
-            }}
-          />
-          {entry.name.trim() && (
-            <textarea
-              value={entry.feedback}
-              onChange={e => onUpdate(i, "feedback", e.target.value)}
-              rows={3}
-              placeholder={`Why is ${entry.name.trim()} your MVP pick?`}
-              style={{
-                ...inputStyle, resize: "vertical", fontFamily: "'Crimson Pro', serif",
-                fontSize: 13, lineHeight: 1.6,
-                borderColor: !entry.feedback.trim() ? "rgba(255,100,100,0.3)" : "rgba(255,255,255,0.13)",
-              }}
-            />
-          )}
-        </div>
-      ))}
-    </div>
-  );
-}
+const STAFF_POINTS = [3, 2, 1];
+const ADMIN_POINTS  = [3, 2];
 
 // ── MVP Form ──────────────────────────────────────────────────────────────────
-// Write in names with required feedback per name.
+// Ranked-button candidate selection + required feedback textarea per picked name.
 function MvpForm({ pollData, onRefresh }) {
-  const [voterName, setVoterName] = useState("");
-  const [locked, setLocked]       = useState(false);
-  // staffEntries / adminEntries: [{ name, feedback }]
-  const [staffEntries, setStaffEntries] = useState([
-    { name: "", feedback: "" },
-    { name: "", feedback: "" },
-    { name: "", feedback: "" },
-  ]);
-  const [adminEntries, setAdminEntries] = useState([
-    { name: "", feedback: "" },
-    { name: "", feedback: "" },
-  ]);
-  const [submitted, setSubmitted] = useState(false);
-  const [error, setError]         = useState("");
-  const [loading, setLoading]     = useState(false);
+  const [voterName, setVoterName]   = useState("");
+  const [locked, setLocked]         = useState(false);
+  // ranks: ordered array of picked names  e.g. ["Alice","Bob","Carol"]
+  const [staffRanks, setStaffRanks] = useState([]);
+  const [adminRanks, setAdminRanks] = useState([]);
+  // feedbacks: { [name]: string }
+  const [staffFeedback, setStaffFeedback] = useState({});
+  const [adminFeedback, setAdminFeedback] = useState({});
+  const [submitted, setSubmitted]   = useState(false);
+  const [error, setError]           = useState("");
+  const [loading, setLoading]       = useState(false);
 
   const mvp = pollData.mvp || {};
   const monthLabel = mvp.month ? `${mvp.month} ` : "";
 
-  const updateEntry = (setter, i, field, val) =>
-    setter(prev => prev.map((e, idx) => idx === i ? { ...e, [field]: val } : e));
+  const isSelfFn = n => voterName.trim().toLowerCase() === n.toLowerCase() && voterName.trim() !== "";
+
+  const handleNameChange = v => {
+    setVoterName(v);
+    const lower = v.trim().toLowerCase();
+    setStaffRanks(r => r.filter(n => n.toLowerCase() !== lower));
+    setAdminRanks(r => r.filter(n => n.toLowerCase() !== lower));
+  };
+
+  const toggleRank = (name, ranks, setRanks, setFeedback, maxPicks) => {
+    if (isSelfFn(name)) return;
+    const idx = ranks.indexOf(name);
+    if (idx !== -1) {
+      setRanks(ranks.filter((_, i) => i !== idx));
+      setFeedback(f => { const n = { ...f }; delete n[name]; return n; });
+    } else if (ranks.length < maxPicks) {
+      setRanks([...ranks, name]);
+    }
+  };
 
   const handleSubmit = async () => {
     if (!voterName.trim()) { setError("Please enter your username."); return; }
     if (!locked)           { setError("Please lock in your username first."); return; }
+    if (mvp.staffEnabled && staffRanks.length === 0) { setError("Please pick at least one Staff MVP."); return; }
+    if (mvp.adminEnabled && adminRanks.length === 0) { setError("Please pick at least one Admin MVP."); return; }
 
-    const filledStaff = staffEntries.filter(e => e.name.trim() !== "");
-    const filledAdmin = adminEntries.filter(e => e.name.trim() !== "");
-
-    if (mvp.staffEnabled && filledStaff.length === 0) { setError("Please enter at least one Staff MVP name."); return; }
-    if (mvp.adminEnabled && filledAdmin.length === 0) { setError("Please enter at least one Admin MVP name."); return; }
-
-    const missingStaff = filledStaff.find(e => !e.feedback.trim());
-    if (missingStaff) { setError(`Please fill in feedback for Staff MVP "${missingStaff.name}".`); return; }
-    const missingAdmin = filledAdmin.find(e => !e.feedback.trim());
-    if (missingAdmin) { setError(`Please fill in feedback for Admin MVP "${missingAdmin.name}".`); return; }
+    // Require feedback for every ranked pick
+    for (const name of staffRanks) {
+      if (!(staffFeedback[name] || "").trim()) { setError(`Feedback required for Staff MVP "${name}".`); return; }
+    }
+    for (const name of adminRanks) {
+      if (!(adminFeedback[name] || "").trim()) { setError(`Feedback required for Admin MVP "${name}".`); return; }
+    }
 
     setLoading(true); setError("");
     const res = await apiFetch("/api/mvp-vote", {
       method: "POST",
       body: {
         voterName: voterName.trim(),
-        staffPicks: filledStaff.map(e => ({ name: e.name.trim(), feedback: e.feedback.trim() })),
-        adminPicks: filledAdmin.map(e => ({ name: e.name.trim(), feedback: e.feedback.trim() })),
+        staffPicks: staffRanks.map((name, i) => ({ name, feedback: staffFeedback[name].trim(), points: STAFF_POINTS[i] || 1 })),
+        adminPicks: adminRanks.map((name, i) => ({ name, feedback: adminFeedback[name].trim(), points: ADMIN_POINTS[i] || 1 })),
       },
     });
     setLoading(false);
@@ -483,8 +445,97 @@ function MvpForm({ pollData, onRefresh }) {
   if (submitted) return (
     <div style={{ textAlign: "center", padding: "60px 20px" }}>
       <div style={{ fontSize: 52, marginBottom: 14 }}>🏆</div>
-      <h2 style={{ fontFamily: "'Cinzel',serif", color: "#e8d5a3", fontSize: 22, marginBottom: 8 }}>MVP Feedback Recorded</h2>
+      <h2 style={{ fontFamily: "'Cinzel',serif", color: "#e8d5a3", fontSize: 22, marginBottom: 8 }}>MVP Vote Recorded</h2>
       <p style={{ color: "#888", fontSize: 14 }}>Thanks for voting!</p>
+    </div>
+  );
+
+  // Reusable ranked section renderer
+  const RankSection = ({ sectionLabel, candidates, ranks, setRanks, feedback, setFeedback, maxPicks, pointsArr }) => (
+    <div style={{ marginBottom: 28 }}>
+      <div style={sectionHeaderStyle}>{sectionLabel}</div>
+      <p style={{ color: "#666", fontSize: 13, marginBottom: 10 }}>
+        Rank up to <strong style={{ color: "#ccc" }}>{maxPicks}</strong>. {pointsArr.slice(0, maxPicks).map((p, i) => `#${i+1}=${p}pt${p!==1?"s":""}`).join(", ")}.
+      </p>
+
+      {/* Rank tracker pills */}
+      <div style={{ display: "flex", gap: 8, marginBottom: 14, flexWrap: "wrap" }}>
+        {Array.from({ length: maxPicks }).map((_, i) => (
+          <div key={i} style={{
+            padding: "3px 12px", borderRadius: 6, fontSize: 12, fontWeight: 700,
+            border: `1px solid ${ranks[i] ? RANK_COLORS[i] : "rgba(255,255,255,0.08)"}`,
+            color: ranks[i] ? RANK_COLORS[i] : "#444",
+            background: ranks[i] ? `${RANK_COLORS[i]}15` : "transparent",
+          }}>
+            {ranks[i] ? `#${i+1} ${ranks[i]}` : `#${i+1} —`}
+          </div>
+        ))}
+      </div>
+
+      {/* Candidate buttons + feedback */}
+      <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
+        {candidates.map(name => {
+          const isSelf = isSelfFn(name);
+          const rankIdx = ranks.indexOf(name);
+          const picked = rankIdx !== -1;
+          const full = !picked && ranks.length >= maxPicks;
+          const color = picked ? RANK_COLORS[rankIdx] : null;
+          return (
+            <div key={name}>
+              <button
+                onClick={() => toggleRank(name, ranks, setRanks, setFeedback, maxPicks)}
+                disabled={isSelf || full}
+                style={{
+                  padding: "11px 18px", borderRadius: 9, textAlign: "left", width: "100%",
+                  border: `2px solid ${picked ? color : isSelf || full ? "rgba(255,255,255,0.04)" : "rgba(255,255,255,0.1)"}`,
+                  background: picked ? `${color}18` : isSelf || full ? "rgba(255,255,255,0.01)" : "rgba(255,255,255,0.03)",
+                  color: isSelf ? "#444" : full ? "#555" : picked ? color : "#ccc",
+                  fontFamily: "'Cinzel',serif", fontWeight: 700, fontSize: 13,
+                  cursor: isSelf || full ? "not-allowed" : "pointer", letterSpacing: 0.5, transition: "all 0.15s",
+                  boxShadow: picked ? `0 0 14px ${color}33` : "none",
+                  display: "flex", alignItems: "center", justifyContent: "space-between",
+                }}
+              >
+                <span>{name}</span>
+                <span style={{ display: "flex", alignItems: "center", gap: 8 }}>
+                  {isSelf && <span style={{ fontSize: 11, color: "#555", fontWeight: 400 }}>yourself</span>}
+                  {full && !isSelf && <span style={{ fontSize: 11, color: "#555", fontWeight: 400 }}>max reached</span>}
+                  {picked && (
+                    <span style={{ background: color, color: "#1a1200", borderRadius: 6, padding: "2px 10px", fontSize: 12, fontWeight: 900, minWidth: 28, textAlign: "center" }}>
+                      #{rankIdx + 1} · {pointsArr[rankIdx]}pt{pointsArr[rankIdx] !== 1 ? "s" : ""}
+                    </span>
+                  )}
+                </span>
+              </button>
+
+              {/* Feedback box — shown when picked */}
+              {picked && (
+                <div style={{ marginTop: 6, paddingLeft: 4 }}>
+                  <label style={{ display: "block", marginBottom: 4 }}>
+                    <span style={{ color: "#aaa", fontSize: 10, letterSpacing: 1.2, textTransform: "uppercase" }}>
+                      Why {name}?
+                    </span>
+                    {" "}
+                    <span style={{ color: "#ff6b6b", fontSize: 10, fontStyle: "italic" }}>*Required</span>
+                  </label>
+                  <textarea
+                    value={feedback[name] || ""}
+                    onChange={e => setFeedback(f => ({ ...f, [name]: e.target.value }))}
+                    rows={3}
+                    placeholder={`Why is ${name} your #${rankIdx + 1} MVP pick?`}
+                    style={{
+                      ...inputStyle, resize: "vertical", fontFamily: "'Crimson Pro', serif",
+                      fontSize: 13, lineHeight: 1.6,
+                      borderColor: !(feedback[name] || "").trim() ? "rgba(255,107,107,0.45)" : `${color}44`,
+                      borderLeft: `3px solid ${color}`,
+                    }}
+                  />
+                </div>
+              )}
+            </div>
+          );
+        })}
+      </div>
     </div>
   );
 
@@ -502,26 +553,26 @@ function MvpForm({ pollData, onRefresh }) {
       )}
 
       <UsernameInput value={voterName} locked={locked}
-        onChange={v => setVoterName(v)}
+        onChange={handleNameChange}
         onLock={() => voterName.trim() && setLocked(true)}
-        onUnlock={() => { setLocked(false); }} />
+        onUnlock={() => { setLocked(false); setStaffRanks([]); setAdminRanks([]); setStaffFeedback({}); setAdminFeedback({}); }} />
 
-      {mvp.staffEnabled && (
-        <MvpEntryBlock
-          label={`⭐ ${monthLabel}Staff MVP`}
-          entries={staffEntries}
-          onUpdate={(i, field, val) => updateEntry(setStaffEntries, i, field, val)}
-          maxSlots={3}
-          hints={mvp.staffCandidates}
+      {mvp.staffEnabled && (mvp.staffCandidates || []).length > 0 && (
+        <RankSection
+          sectionLabel={`⭐ ${monthLabel}Staff MVP`}
+          candidates={mvp.staffCandidates}
+          ranks={staffRanks} setRanks={setStaffRanks}
+          feedback={staffFeedback} setFeedback={setStaffFeedback}
+          maxPicks={3} pointsArr={STAFF_POINTS}
         />
       )}
-      {mvp.adminEnabled && (
-        <MvpEntryBlock
-          label={`👑 ${monthLabel}Admin MVP`}
-          entries={adminEntries}
-          onUpdate={(i, field, val) => updateEntry(setAdminEntries, i, field, val)}
-          maxSlots={2}
-          hints={mvp.adminCandidates}
+      {mvp.adminEnabled && (mvp.adminCandidates || []).length > 0 && (
+        <RankSection
+          sectionLabel={`👑 ${monthLabel}Admin MVP`}
+          candidates={mvp.adminCandidates}
+          ranks={adminRanks} setRanks={setAdminRanks}
+          feedback={adminFeedback} setFeedback={setAdminFeedback}
+          maxPicks={2} pointsArr={ADMIN_POINTS}
         />
       )}
       {!mvp.staffEnabled && !mvp.adminEnabled && (
@@ -531,7 +582,7 @@ function MvpForm({ pollData, onRefresh }) {
         <>
           {error && <div style={errorStyle}>⚠ {error}</div>}
           <button onClick={handleSubmit} disabled={loading} style={submitBtnStyle}>
-            {loading ? "Submitting…" : `Submit ${monthLabel}MVP Feedback`}
+            {loading ? "Submitting…" : `Submit ${monthLabel}MVP Vote`}
           </button>
         </>
       )}
@@ -736,30 +787,33 @@ function MvpResultsPanel({ pollData }) {
   const monthLabel = mvp.month ? `${mvp.month} ` : "";
   const [expanded, setExpanded] = useState({});
 
-  // Aggregate picks: { name -> [{ voter, feedback }] }
-  const aggregatePicks = (key) => {
+  // Aggregate picks with points: { name -> { pts, entries: [{voter, rank, points, feedback}] } }
+  const aggregatePicks = (key, pointsArr) => {
     const map = {};
     for (const [voter, v] of Object.entries(mvpVotes)) {
-      for (const pick of (v[key] || [])) {
+      for (const [idx, pick] of (v[key] || []).entries()) {
         const name = pick.name || pick;
-        if (!map[name]) map[name] = [];
-        map[name].push({ voter, feedback: pick.feedback || "" });
+        const pts = pick.points ?? pointsArr[idx] ?? 1;
+        if (!map[name]) map[name] = { pts: 0, entries: [] };
+        map[name].pts += pts;
+        map[name].entries.push({ voter, rank: idx + 1, points: pts, feedback: pick.feedback || "" });
       }
     }
     return Object.entries(map)
-      .map(([name, entries]) => ({ name, count: entries.length, entries }))
-      .sort((a, b) => b.count - a.count);
+      .map(([name, { pts, entries }]) => ({ name, pts, votes: entries.length, entries }))
+      .sort((a, b) => b.pts - a.pts);
   };
 
-  const staffResults = aggregatePicks("staffPicks");
-  const adminResults = aggregatePicks("adminPicks");
+  const staffResults = aggregatePicks("staffPicks", STAFF_POINTS);
+  const adminResults = aggregatePicks("adminPicks", ADMIN_POINTS);
 
   const ResultList = ({ results, colorKey }) => results.map((r, i) => (
     <div key={r.name} style={{ ...cardStyle, marginBottom: 8 }}>
       <div style={{ display: "flex", alignItems: "center", gap: 12, marginBottom: 8 }}>
         <span style={{ fontFamily: "'Cinzel',serif", fontSize: 18, color: RANK_COLORS[i] || "#555", width: 24, flexShrink: 0 }}>{i === 0 ? "★" : `${i + 1}`}</span>
         <span style={{ fontFamily: "'Cinzel',serif", color: "#e8d5a3", fontWeight: 700, flex: 1 }}>{r.name}</span>
-        <span style={{ color: "#f5c542", fontWeight: 700, fontSize: 13 }}>{r.count} vote{r.count !== 1 ? "s" : ""}</span>
+        <span style={{ color: "#f5c542", fontWeight: 700, fontSize: 13, marginRight: 6 }}>{r.pts} pts</span>
+        <span style={{ color: "#666", fontSize: 12 }}>{r.votes} vote{r.votes !== 1 ? "s" : ""}</span>
       </div>
       {r.entries.length > 0 && (
         <>
@@ -774,9 +828,12 @@ function MvpResultsPanel({ pollData }) {
           </button>
           {expanded[`${colorKey}-${r.name}`] && (
             <div style={{ marginTop: 8, display: "flex", flexDirection: "column", gap: 6 }}>
-              {r.entries.map(({ voter, feedback }) => (
+              {r.entries.map(({ voter, rank, points, feedback }) => (
                 <div key={voter} style={{ background: "rgba(255,255,255,0.02)", border: "1px solid rgba(255,255,255,0.07)", borderRadius: 8, padding: "10px 14px" }}>
-                  <div style={{ fontSize: 11, color: "#f5c542", fontFamily: "'Cinzel',serif", marginBottom: 5 }}>{voter}</div>
+                  <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 5 }}>
+                    <span style={{ fontSize: 11, color: "#f5c542", fontFamily: "'Cinzel',serif" }}>{voter}</span>
+                    <span style={{ fontSize: 10, color: "#555" }}>· #{rank} · {points}pt{points !== 1 ? "s" : ""}</span>
+                  </div>
                   {feedback && <div style={{ fontSize: 13, color: "#bbb", lineHeight: 1.6, whiteSpace: "pre-wrap" }}>{feedback}</div>}
                 </div>
               ))}
