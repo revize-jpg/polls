@@ -435,6 +435,50 @@ function ApplicantsForm({ pollData, onRefresh }) {
         )}
       </div>
 
+      {/* ── Applicant Vouches ── */}
+      {(() => {
+        // Aggregate all submitted picks anonymously: { name -> [feedback, ...] }
+        const vouchMap = {};
+        for (const v of Object.values(pollData.applicantVotes || {})) {
+          for (const pick of (v.picks || [])) {
+            const name = pick.name || pick;
+            const fb   = (pick.feedback || "").trim();
+            if (!name || !fb) continue;
+            if (!vouchMap[name]) vouchMap[name] = [];
+            vouchMap[name].push(fb);
+          }
+        }
+        const vouchEntries = Object.entries(vouchMap).sort((a, b) => b[1].length - a[1].length);
+        if (vouchEntries.length === 0) return null;
+        return (
+          <div style={{ marginTop: 28 }}>
+            <div style={sectionHeaderStyle}>💬 Applicant Vouches</div>
+            <p style={{ color: "#555", fontSize: 12, marginBottom: 14 }}>
+              Feedback left anonymously by staff members. Names reflect the applicant, not the voter.
+            </p>
+            <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
+              {vouchEntries.map(([name, feedbacks]) =>
+                feedbacks.map((fb, i) => (
+                  <div key={`${name}-${i}`} style={{
+                    background: "rgba(96,165,250,0.04)",
+                    border: "1px solid rgba(96,165,250,0.15)",
+                    borderLeft: "3px solid #60a5fa",
+                    borderRadius: 8, padding: "12px 16px",
+                  }}>
+                    <div style={{ fontFamily: "'Cinzel',serif", fontWeight: 700, color: "#60a5fa", fontSize: 13, marginBottom: 6 }}>
+                      {name}
+                    </div>
+                    <div style={{ color: "#bbb", fontSize: 13, lineHeight: 1.65, fontStyle: "italic" }}>
+                      "{fb}"
+                    </div>
+                  </div>
+                ))
+              )}
+            </div>
+          </div>
+        );
+      })()}
+
       {error && <div style={{ ...errorStyle, marginTop: 16 }}>⚠ {error}</div>}
       <button onClick={handleSubmit} disabled={loading} style={{ ...submitBtnStyle, marginTop: 16 }}>
         {loading ? "Submitting…" : "Submit Applicant Feedback"}
