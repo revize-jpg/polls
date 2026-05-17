@@ -122,19 +122,19 @@ const FEEDBACK_FIELDS = [
     key: "strengths",
     label: "Strengths",
     sublabel: "Positive feedback you'd like to relay to this member",
-    placeholder: "What does this member do well? What are their standout qualities?",
+    placeholder: "What does this member do well as staff? What are their standout qualities?",
   },
   {
     key: "weaknesses",
     label: "Weaknesses",
     sublabel: "Feedback you'd leave this member to improve",
-    placeholder: "What areas could this member improve on? Any constructive criticism?",
+    placeholder: "What areas could this member improve on? Any constructive criticism? Are they trending up or down?",
   },
   {
     key: "rank",
     label: "Rank this player aligns with the most",
     sublabel: "Does this member possess the traits and skills of a Support, Moderator, or Admin?",
-    placeholder: "Which rank best fits this member's current performance and why?",
+    placeholder: "Which rank best fits this member's current performance and why? Are they where they belong?",
   },
 ];
 
