@@ -313,7 +313,7 @@ function ApplicantsForm({ pollData, onRefresh }) {
 
       <div style={sectionHeaderStyle}>📋 Staff Applicants</div>
       <p style={{ color: "#666", fontSize: 13, marginBottom: 16 }}>
-        Write in up to <strong style={{ color: "#ccc" }}>3 applicant names</strong> and leave feedback for each one you nominate. For a list of applicants, navigate here: <html>https://discord.com/channels/1150539550561681508/1150539551517978676</html>
+        Write in up to <strong style={{ color: "#ccc" }}>3 applicant names</strong> and leave feedback for each one you nominate. For a list of applicants, navigate here: <a>https://discord.com/channels/1150539550561681508/1150539551517978676</a>
       </p>
 
       {entries.map((entry, i) => (
