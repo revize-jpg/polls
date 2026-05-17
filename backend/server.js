@@ -7,8 +7,6 @@ const app  = express();
 const PORT = process.env.PORT || 3001;
 
 // ── PostgreSQL connection ─────────────────────────────────────────────────────
-// Set DATABASE_URL in Railway environment variables.
-// Railway Postgres addon provides this automatically.
 const pool = new Pool({
   connectionString: process.env.DATABASE_URL,
   ssl: process.env.DATABASE_URL ? { rejectUnauthorized: false } : false,
@@ -40,20 +38,20 @@ const DEFAULT_DATA = {
     { username: "Nois",        currentRole: "Admin" },
     { username: "Pinecone",    currentRole: "Admin" },
   ],
+  // votes[voterKey] = { feedbacks: { [username]: string } }
   votes: {},
   voterNames: [],
   mvp: { staffEnabled: false, adminEnabled: false, staffCandidates: [], adminCandidates: [] },
+  // mvpVotes[voterKey] = { staffPicks: [{name, feedback}], adminPicks: [{name, feedback}] }
   mvpVotes: {},
   mvpVoterNames: [],
   applicants: { candidates: [] },
+  // applicantVotes[voterKey] = { picks: [{name, feedback}] }
   applicantVotes: {},
   applicantVoterNames: [],
 };
 
 // ── DB helpers ────────────────────────────────────────────────────────────────
-// We store the entire poll state as a single JSONB row keyed by id=1.
-// This keeps the migration from fs-extra trivial — same data shape.
-
 async function initDB() {
   await pool.query(`
     CREATE TABLE IF NOT EXISTS poll_state (
@@ -62,7 +60,6 @@ async function initDB() {
       updated TIMESTAMPTZ DEFAULT NOW()
     )
   `);
-  // Seed with defaults if empty
   const { rowCount } = await pool.query("SELECT id FROM poll_state WHERE id = 1");
   if (rowCount === 0) {
     await pool.query(
@@ -99,26 +96,27 @@ app.get("/api/poll", async (req, res) => {
   }
 });
 
-// POST /api/vote — submit a staff poll vote
+// POST /api/vote — submit staff feedback
+// body: { voterName, feedbacks: { [username]: string } }
 app.post("/api/vote", async (req, res) => {
   try {
-    const { voterName, votes, feedback } = req.body;
-    if (!voterName || !votes) return res.status(400).json({ error: "Missing fields" });
+    const { voterName, feedbacks } = req.body;
+    if (!voterName || !feedbacks) return res.status(400).json({ error: "Missing fields" });
 
     const data = await readData();
     const key  = voterName.trim().toLowerCase();
 
     if (data.voterNames.includes(key))
-      return res.status(409).json({ error: "Already voted" });
+      return res.status(409).json({ error: "You have already submitted feedback." });
 
-    // Validate every staff member (except self) has a vote
+    // Validate feedback for every staff member except self
     for (const m of data.staff) {
       if (m.username.toLowerCase() === key) continue;
-      if (!votes[m.username])
-        return res.status(400).json({ error: `Missing vote for ${m.username}` });
+      if (!feedbacks[m.username] || !feedbacks[m.username].trim())
+        return res.status(400).json({ error: `Missing feedback for ${m.username}` });
     }
 
-    data.votes[key] = { ...votes, __feedback__: (feedback || "").trim() };
+    data.votes[key] = { feedbacks };
     data.voterNames.push(key);
     await writeData(data);
     res.json({ ok: true });
@@ -128,10 +126,11 @@ app.post("/api/vote", async (req, res) => {
   }
 });
 
-// POST /api/mvp-vote — submit an MVP vote
+// POST /api/mvp-vote — submit MVP feedback
+// body: { voterName, staffPicks: [{name, feedback}], adminPicks: [{name, feedback}] }
 app.post("/api/mvp-vote", async (req, res) => {
   try {
-    const { voterName, staffRanks, adminRanks } = req.body;
+    const { voterName, staffPicks, adminPicks } = req.body;
     if (!voterName) return res.status(400).json({ error: "Missing voterName" });
 
     const data = await readData();
@@ -140,12 +139,28 @@ app.post("/api/mvp-vote", async (req, res) => {
     if ((data.mvpVoterNames || []).includes(key))
       return res.status(409).json({ error: "You have already submitted an MVP vote." });
 
+    const mvp = data.mvp || {};
+
+    // Validate: if section enabled, at least one pick with feedback
+    if (mvp.staffEnabled) {
+      const filled = (staffPicks || []).filter(p => p.name && p.name.trim());
+      if (filled.length === 0) return res.status(400).json({ error: "Please enter at least one Staff MVP name." });
+      const missing = filled.find(p => !p.feedback || !p.feedback.trim());
+      if (missing) return res.status(400).json({ error: `Feedback required for Staff MVP "${missing.name}".` });
+    }
+    if (mvp.adminEnabled) {
+      const filled = (adminPicks || []).filter(p => p.name && p.name.trim());
+      if (filled.length === 0) return res.status(400).json({ error: "Please enter at least one Admin MVP name." });
+      const missing = filled.find(p => !p.feedback || !p.feedback.trim());
+      if (missing) return res.status(400).json({ error: `Feedback required for Admin MVP "${missing.name}".` });
+    }
+
     if (!data.mvpVotes)      data.mvpVotes      = {};
     if (!data.mvpVoterNames) data.mvpVoterNames = [];
 
     data.mvpVotes[key] = {
-      staffRanks: Array.isArray(staffRanks) ? staffRanks : [],
-      adminRanks: Array.isArray(adminRanks) ? adminRanks : [],
+      staffPicks: (staffPicks || []).filter(p => p.name && p.name.trim()).map(p => ({ name: p.name.trim(), feedback: (p.feedback || "").trim() })),
+      adminPicks: (adminPicks || []).filter(p => p.name && p.name.trim()).map(p => ({ name: p.name.trim(), feedback: (p.feedback || "").trim() })),
     };
     data.mvpVoterNames.push(key);
     await writeData(data);
@@ -156,7 +171,8 @@ app.post("/api/mvp-vote", async (req, res) => {
   }
 });
 
-// POST /api/applicant-vote — submit an applicant vote
+// POST /api/applicant-vote — submit applicant feedback
+// body: { voterName, picks: [{name, feedback}] }
 app.post("/api/applicant-vote", async (req, res) => {
   try {
     const { voterName, picks } = req.body;
@@ -169,10 +185,19 @@ app.post("/api/applicant-vote", async (req, res) => {
     if ((data.applicantVoterNames || []).includes(key))
       return res.status(409).json({ error: "You have already submitted an applicant vote." });
 
+    // Validate each pick has a name and feedback
+    const filled = picks.filter(p => p.name && p.name.trim());
+    if (filled.length === 0) return res.status(400).json({ error: "Please enter at least one applicant name." });
+    const missing = filled.find(p => !p.feedback || !p.feedback.trim());
+    if (missing) return res.status(400).json({ error: `Feedback required for "${missing.name}".` });
+    if (filled.length > 3) return res.status(400).json({ error: "Maximum 3 applicant picks allowed." });
+
     if (!data.applicantVotes)      data.applicantVotes      = {};
     if (!data.applicantVoterNames) data.applicantVoterNames = [];
 
-    data.applicantVotes[key] = { picks };
+    data.applicantVotes[key] = {
+      picks: filled.map(p => ({ name: p.name.trim(), feedback: p.feedback.trim() })),
+    };
     data.applicantVoterNames.push(key);
     await writeData(data);
     res.json({ ok: true });
@@ -202,8 +227,7 @@ app.put("/api/admin/settings", async (req, res) => {
   }
 });
 
-// PUT /api/admin/vote — admin edits/replaces a specific vote
-// body: { adminPassword, voteType: "staff"|"mvp"|"applicant", voterKey, voteData }
+// PUT /api/admin/vote — admin edits a specific submission
 app.put("/api/admin/vote", async (req, res) => {
   try {
     const { adminPassword, voteType, voterKey, voteData } = req.body;
@@ -216,13 +240,13 @@ app.put("/api/admin/vote", async (req, res) => {
     const key  = voterKey.trim().toLowerCase();
 
     if (voteType === "staff") {
-      if (!data.votes[key]) return res.status(404).json({ error: "Vote not found" });
+      if (!data.votes[key]) return res.status(404).json({ error: "Submission not found" });
       data.votes[key] = voteData;
     } else if (voteType === "mvp") {
-      if (!data.mvpVotes[key]) return res.status(404).json({ error: "Vote not found" });
+      if (!data.mvpVotes[key]) return res.status(404).json({ error: "Submission not found" });
       data.mvpVotes[key] = voteData;
     } else if (voteType === "applicant") {
-      if (!data.applicantVotes[key]) return res.status(404).json({ error: "Vote not found" });
+      if (!data.applicantVotes[key]) return res.status(404).json({ error: "Submission not found" });
       data.applicantVotes[key] = voteData;
     } else {
       return res.status(400).json({ error: "Invalid voteType" });
@@ -236,8 +260,7 @@ app.put("/api/admin/vote", async (req, res) => {
   }
 });
 
-// DELETE /api/admin/vote — admin deletes a specific vote
-// body: { adminPassword, voteType, voterKey }
+// DELETE /api/admin/vote — admin deletes a specific submission
 app.delete("/api/admin/vote", async (req, res) => {
   try {
     const { adminPassword, voteType, voterKey } = req.body;
