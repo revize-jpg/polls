@@ -435,7 +435,7 @@ function ApplicantsForm({ pollData, onRefresh }) {
         <input
           value={writeIn.name}
           onChange={e => setWriteIn(w => ({ ...w, name: e.target.value }))}
-          placeholder="Applicant name (e.g. IWantStaff22, PickMe45, None needed)"
+          placeholder="Applicant name (StaffWanter, None needed, etc.)"
           style={{ ...inputStyle, marginBottom: 10 }}
         />
         {hasWriteIn && (
