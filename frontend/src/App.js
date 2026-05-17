@@ -134,7 +134,7 @@ const FEEDBACK_FIELDS = [
     key: "rank",
     label: "Rank this player aligns with the most",
     sublabel: "Does this member possess the traits and skills of a Support, Moderator, or Admin?",
-    placeholder: "Which rank best fits this member's current performance and why?",
+    placeholder: "Which rank best fits this member's current performance and why? Are they trending up or down?",
   },
 ];
 
