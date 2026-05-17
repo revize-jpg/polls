@@ -311,10 +311,21 @@ function ApplicantsForm({ pollData, onRefresh }) {
         onLock={() => voterName.trim() && setLocked(true)}
         onUnlock={() => { setLocked(false); }} />
 
-      <div style={sectionHeaderStyle}>📋 Staff Applicants</div>
-      <p style={{ color: "#666", fontSize: 13, marginBottom: 16 }}>
-        Write in up to <strong style={{ color: "#ccc" }}>3 applicant names</strong> and leave feedback for each one you nominate. For a list of applicants, navigate here: <a>https://discord.com/channels/1150539550561681508/1150539551517978676</a>
-      </p>
+    <div style={sectionHeaderStyle}>📋 Staff Applicants</div>
+
+<p style={{ color: "#666", fontSize: 13, marginBottom: 16 }}>
+  Write in up to <strong style={{ color: "#ccc" }}>3 applicant names</strong> and leave feedback for each one you nominate. 
+  For a list of applicants, navigate here:{" "}
+  
+  <a
+    href="https://discord.com/channels/1150539550561681508/1150539551517978676"
+    target="_blank"
+    rel="noopener noreferrer"
+    style={{ color: "#4da6ff" }}
+  >
+    Staff Applicants
+  </a>
+</p>
 
       {entries.map((entry, i) => (
         <div key={i} style={{ ...cardStyle, marginBottom: 16 }}>
