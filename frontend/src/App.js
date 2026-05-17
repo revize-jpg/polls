@@ -122,19 +122,19 @@ const FEEDBACK_FIELDS = [
     key: "strengths",
     label: "Strengths",
     sublabel: "Positive feedback you'd like to relay to this member",
-    placeholder: "What does this member do well as staff? What are their standout qualities?",
+    placeholder: "What does this member do well? What are their standout qualities?",
   },
   {
     key: "weaknesses",
     label: "Weaknesses",
     sublabel: "Feedback you'd leave this member to improve",
-    placeholder: "What areas could this member improve on? Any constructive criticism? Are they trending up or down?",
+    placeholder: "What areas could this member improve on? Any constructive criticism?",
   },
   {
     key: "rank",
     label: "Rank this player aligns with the most",
     sublabel: "Does this member possess the traits and skills of a Support, Moderator, or Admin?",
-    placeholder: "Which rank best fits this member's current performance and why? Are they where they belong?",
+    placeholder: "Which rank best fits this member's current performance and why?",
   },
 ];
 
@@ -154,17 +154,16 @@ function VotingForm({ pollData, onRefresh }) {
 
   const getField = (username, field) => (feedbacks[username] || {})[field] || "";
 
-  // All non-self members must have all 3 fields filled
+  // Only "rank" is required per non-self member
   const allFilled = pollData.staff.every(m => {
     if (isSelfFn(m.username)) return true;
-    const fb = feedbacks[m.username] || {};
-    return FEEDBACK_FIELDS.every(f => (fb[f.key] || "").trim() !== "");
+    return ((feedbacks[m.username] || {}).rank || "").trim() !== "";
   });
 
   const handleSubmit = async () => {
     if (!voterName.trim()) { setError("Please enter your username."); return; }
     if (!locked)           { setError("Please lock in your username first (click ⏎)."); return; }
-    if (!allFilled)        { setError("Please fill in all required feedback fields for every staff member."); return; }
+    if (!allFilled)        { setError("Please fill in the required rank field for every staff member."); return; }
     setLoading(true); setError("");
     const res = await apiFetch("/api/vote", {
       method: "POST",
@@ -190,7 +189,7 @@ function VotingForm({ pollData, onRefresh }) {
         onLock={() => voterName.trim() && setLocked(true)}
         onUnlock={() => setLocked(false)} />
       <p style={{ color: "#666", fontSize: 13, marginBottom: 18 }}>
-        Fill in all three feedback sections for each staff member below.
+        The <strong style={{ color: "#ccc" }}>Rank</strong> field is required for each staff member. Strengths and Weaknesses are optional.
       </p>
 
       {pollData.staff.map(m => {
@@ -210,8 +209,9 @@ function VotingForm({ pollData, onRefresh }) {
             </div>
 
             {FEEDBACK_FIELDS.map(field => {
+              const isRequired = field.key === "rank";
               const val = getField(m.username, field.key);
-              const missing = !isSelf && val.trim() === "";
+              const missing = isRequired && !isSelf && val.trim() === "";
               return (
                 <div key={field.key} style={{ marginBottom: 14, opacity: isSelf ? 0.3 : 1 }}>
                   <label style={{ display: "block", marginBottom: 4 }}>
@@ -219,7 +219,9 @@ function VotingForm({ pollData, onRefresh }) {
                       {field.label}
                     </span>
                     {" "}
-                    <span style={{ color: "#ff6b6b", fontSize: 11, fontStyle: "italic" }}>*Required</span>
+                    {isRequired
+                      ? <span style={{ color: "#ff6b6b", fontSize: 11, fontStyle: "italic" }}>*Required</span>
+                      : <span style={{ color: "#555", fontSize: 11, fontStyle: "italic" }}>Optional</span>}
                     <span style={{ display: "block", color: "#555", fontSize: 11, marginTop: 2, textTransform: "none", letterSpacing: 0 }}>
                       {field.sublabel}
                     </span>
@@ -264,32 +266,59 @@ function VotingForm({ pollData, onRefresh }) {
 function ApplicantsForm({ pollData, onRefresh }) {
   const [voterName, setVoterName] = useState("");
   const [locked, setLocked]       = useState(false);
-  const [entries, setEntries]     = useState([
-    { name: "", feedback: "" },
-    { name: "", feedback: "" },
-    { name: "", feedback: "" },
-  ]);
+  // selectedPicks: { [name]: { feedback: string } } — from admin candidate list
+  const [selectedPicks, setSelectedPicks] = useState({});
+  // writeIn: { name, feedback } — optional write-in slot
+  const [writeIn, setWriteIn]     = useState({ name: "", feedback: "" });
   const [submitted, setSubmitted] = useState(false);
   const [error, setError]         = useState("");
   const [loading, setLoading]     = useState(false);
 
-  const updateEntry = (i, field, val) =>
-    setEntries(prev => prev.map((e, idx) => idx === i ? { ...e, [field]: val } : e));
+  const candidates = (pollData.applicants || {}).candidates || [];
+  const hasWriteIn = writeIn.name.trim() !== "";
+  const selectedNames = Object.keys(selectedPicks);
+
+  const toggleCandidate = (name) => {
+    setSelectedPicks(prev => {
+      if (prev[name] !== undefined) {
+        const next = { ...prev };
+        delete next[name];
+        return next;
+      }
+      return { ...prev, [name]: { feedback: "" } };
+    });
+  };
+
+  const setCandidateFeedback = (name, val) =>
+    setSelectedPicks(prev => ({ ...prev, [name]: { ...(prev[name] || {}), feedback: val } }));
 
   const handleSubmit = async () => {
     if (!voterName.trim()) { setError("Please enter your username."); return; }
     if (!locked)           { setError("Please lock in your username first."); return; }
 
-    const filled = entries.filter(e => e.name.trim() !== "");
-    if (filled.length === 0) { setError("Please enter at least one applicant name."); return; }
+    // Must have at least one selected candidate OR a write-in name
+    if (selectedNames.length === 0 && !hasWriteIn) {
+      setError("Please select at least one applicant or fill in the write-in box."); return;
+    }
 
-    const missingFeedback = filled.find(e => !e.feedback.trim());
-    if (missingFeedback) { setError(`Please fill in feedback for "${missingFeedback.name}".`); return; }
+    // Each selected candidate needs feedback
+    const missingFb = selectedNames.find(n => !(selectedPicks[n]?.feedback || "").trim());
+    if (missingFb) { setError(`Please fill in feedback for "${missingFb}".`); return; }
+
+    // If write-in name filled, feedback is required too
+    if (hasWriteIn && !writeIn.feedback.trim()) {
+      setError(`Please fill in feedback for your write-in "${writeIn.name.trim()}".`); return;
+    }
+
+    const picks = [
+      ...selectedNames.map(name => ({ name, feedback: selectedPicks[name].feedback.trim() })),
+      ...(hasWriteIn ? [{ name: writeIn.name.trim(), feedback: writeIn.feedback.trim() }] : []),
+    ];
 
     setLoading(true); setError("");
     const res = await apiFetch("/api/applicant-vote", {
       method: "POST",
-      body: { voterName: voterName.trim(), picks: filled.map(e => ({ name: e.name.trim(), feedback: e.feedback.trim() })) },
+      body: { voterName: voterName.trim(), picks },
     });
     setLoading(false);
     if (res.error) { setError(res.error); return; }
@@ -313,60 +342,101 @@ function ApplicantsForm({ pollData, onRefresh }) {
 
       <div style={sectionHeaderStyle}>📋 Staff Applicants</div>
       <p style={{ color: "#666", fontSize: 13, marginBottom: 16 }}>
-        Write in up to <strong style={{ color: "#ccc" }}>3 applicant names</strong> and leave feedback for each one you nominate.
+        Select any applicants you're voting for. Feedback is required for each selection.
       </p>
 
-      {entries.map((entry, i) => (
-        <div key={i} style={{ ...cardStyle, marginBottom: 16 }}>
-          <div style={{ fontSize: 11, color: "#888", letterSpacing: 1, textTransform: "uppercase", marginBottom: 10 }}>
-            Applicant {i + 1}{" "}
-            {i === 0
-              ? <span style={{ color: "#555" }}>(required)</span>
-              : <span style={{ color: "#555" }}>(optional)</span>}
-          </div>
+      {/* Admin-set candidate buttons */}
+      {candidates.length > 0 && (
+        <div style={{ display: "flex", flexDirection: "column", gap: 10, marginBottom: 20 }}>
+          {candidates.map(name => {
+            const selected = selectedPicks[name] !== undefined;
+            const fb = (selectedPicks[name] || {}).feedback || "";
+            return (
+              <div key={name}>
+                <button
+                  onClick={() => toggleCandidate(name)}
+                  style={{
+                    padding: "11px 18px", borderRadius: 9, textAlign: "left", width: "100%",
+                    border: `2px solid ${selected ? "#60a5fa" : "rgba(255,255,255,0.1)"}`,
+                    background: selected ? "rgba(96,165,250,0.12)" : "rgba(255,255,255,0.03)",
+                    color: selected ? "#60a5fa" : "#ccc",
+                    fontFamily: "'Cinzel',serif", fontWeight: 700, fontSize: 13,
+                    cursor: "pointer", letterSpacing: 0.5, transition: "all 0.15s",
+                    boxShadow: selected ? "0 0 14px rgba(96,165,250,0.2)" : "none",
+                    display: "flex", alignItems: "center", justifyContent: "space-between",
+                  }}
+                >
+                  <span>{name}</span>
+                  {selected && <span style={{ fontSize: 15 }}>✓</span>}
+                </button>
 
-          {/* Name input */}
-          <input
-            value={entry.name}
-            onChange={e => updateEntry(i, "name", e.target.value)}
-            placeholder="Applicant name (e.g. IWantStaff22, PickMe45, None needed)"
-            style={{
-              ...inputStyle, marginBottom: 12,
-              borderColor: i === 0 && !entry.name.trim() ? "rgba(255,107,107,0.45)" : "rgba(255,255,255,0.13)",
-            }}
-          />
+                {/* Feedback box appears when selected */}
+                {selected && (
+                  <div style={{ marginTop: 6, paddingLeft: 4 }}>
+                    <label style={{ display: "block", marginBottom: 4 }}>
+                      <span style={{ color: "#aaa", fontSize: 10, letterSpacing: 1.2, textTransform: "uppercase" }}>
+                        Why {name}?
+                      </span>
+                      {" "}
+                      <span style={{ color: "#ff6b6b", fontSize: 10, fontStyle: "italic" }}>*Required</span>
+                    </label>
+                    <textarea
+                      value={fb}
+                      onChange={e => setCandidateFeedback(name, e.target.value)}
+                      rows={3}
+                      placeholder="What makes this player stand out over everyone else? What skills do they possess that could be useful for this team?"
+                      style={{
+                        ...inputStyle, resize: "vertical", fontFamily: "'Crimson Pro', serif",
+                        fontSize: 13, lineHeight: 1.6,
+                        borderColor: !fb.trim() ? "rgba(255,107,107,0.45)" : "rgba(96,165,250,0.3)",
+                        borderLeft: "3px solid #60a5fa",
+                      }}
+                    />
+                  </div>
+                )}
+              </div>
+            );
+          })}
+        </div>
+      )}
 
-          {/* Feedback input — always visible */}
+      {/* Optional write-in */}
+      <div style={{ ...cardStyle, border: "1px dashed rgba(255,255,255,0.12)", background: "rgba(255,255,255,0.01)" }}>
+        <div style={{ fontSize: 11, color: "#666", letterSpacing: 1, textTransform: "uppercase", marginBottom: 10 }}>
+          Write-in <span style={{ color: "#444" }}>(optional — use if your pick isn't listed above)</span>
+        </div>
+        <input
+          value={writeIn.name}
+          onChange={e => setWriteIn(w => ({ ...w, name: e.target.value }))}
+          placeholder="Applicant name (e.g. IWantStaff22, PickMe45, None needed)"
+          style={{ ...inputStyle, marginBottom: 10 }}
+        />
+        {hasWriteIn && (
           <div>
             <label style={{ display: "block", marginBottom: 4 }}>
-              <span style={{ color: "#aaa", fontSize: 11, letterSpacing: 1.2, textTransform: "uppercase", fontWeight: 700 }}>
+              <span style={{ color: "#aaa", fontSize: 10, letterSpacing: 1.2, textTransform: "uppercase" }}>
                 Why this applicant?
               </span>
-              {entry.name.trim() && (
-                <>{" "}<span style={{ color: "#ff6b6b", fontSize: 11, fontStyle: "italic" }}>*Required</span></>
-              )}
-              <span style={{ display: "block", color: "#555", fontSize: 11, marginTop: 2, textTransform: "none", letterSpacing: 0 }}>
-                What makes them stand out? Why should they be selected over anyone else?
-              </span>
+              {" "}
+              <span style={{ color: "#ff6b6b", fontSize: 10, fontStyle: "italic" }}>*Required</span>
             </label>
             <textarea
-              value={entry.feedback}
-              onChange={e => updateEntry(i, "feedback", e.target.value)}
+              value={writeIn.feedback}
+              onChange={e => setWriteIn(w => ({ ...w, feedback: e.target.value }))}
               rows={3}
               placeholder="What makes this player stand out over everyone else? What skills do they possess that could be useful for this team?"
               style={{
                 ...inputStyle, resize: "vertical", fontFamily: "'Crimson Pro', serif",
                 fontSize: 13, lineHeight: 1.6,
-                borderColor: entry.name.trim() && !entry.feedback.trim()
-                  ? "rgba(255,107,107,0.45)" : "rgba(255,255,255,0.13)",
+                borderColor: !writeIn.feedback.trim() ? "rgba(255,107,107,0.45)" : "rgba(255,255,255,0.13)",
               }}
             />
           </div>
-        </div>
-      ))}
+        )}
+      </div>
 
-      {error && <div style={errorStyle}>⚠ {error}</div>}
-      <button onClick={handleSubmit} disabled={loading} style={submitBtnStyle}>
+      {error && <div style={{ ...errorStyle, marginTop: 16 }}>⚠ {error}</div>}
+      <button onClick={handleSubmit} disabled={loading} style={{ ...submitBtnStyle, marginTop: 16 }}>
         {loading ? "Submitting…" : "Submit Applicant Feedback"}
       </button>
     </div>
@@ -375,6 +445,97 @@ function ApplicantsForm({ pollData, onRefresh }) {
 
 const STAFF_POINTS = [3, 2, 1];
 const ADMIN_POINTS  = [3, 2];
+
+// ── MVP Rank Section (top-level to prevent remount/focus loss and scroll jump) ─
+function MvpRankSection({ sectionLabel, candidates, ranks, setRanks, feedback, setFeedback, isSelfFn, toggleRank, maxPicks, pointsArr }) {
+  return (
+    <div style={{ marginBottom: 28 }}>
+      <div style={sectionHeaderStyle}>{sectionLabel}</div>
+      <p style={{ color: "#666", fontSize: 13, marginBottom: 10 }}>
+        Rank up to <strong style={{ color: "#ccc" }}>{maxPicks}</strong>. {pointsArr.slice(0, maxPicks).map((p, i) => `#${i+1}=${p}pt${p!==1?"s":""}`).join(", ")}.
+      </p>
+
+      {/* Rank tracker pills */}
+      <div style={{ display: "flex", gap: 8, marginBottom: 14, flexWrap: "wrap" }}>
+        {Array.from({ length: maxPicks }).map((_, i) => (
+          <div key={i} style={{
+            padding: "3px 12px", borderRadius: 6, fontSize: 12, fontWeight: 700,
+            border: `1px solid ${ranks[i] ? RANK_COLORS[i] : "rgba(255,255,255,0.08)"}`,
+            color: ranks[i] ? RANK_COLORS[i] : "#444",
+            background: ranks[i] ? `${RANK_COLORS[i]}15` : "transparent",
+          }}>
+            {ranks[i] ? `#${i+1} ${ranks[i]}` : `#${i+1} —`}
+          </div>
+        ))}
+      </div>
+
+      {/* Candidate buttons + feedback */}
+      <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
+        {candidates.map(name => {
+          const isSelf = isSelfFn(name);
+          const rankIdx = ranks.indexOf(name);
+          const picked = rankIdx !== -1;
+          const full = !picked && ranks.length >= maxPicks;
+          const color = picked ? RANK_COLORS[rankIdx] : null;
+          return (
+            <div key={name}>
+              <button
+                onClick={e => { e.preventDefault(); toggleRank(name, ranks, setRanks, setFeedback, maxPicks); }}
+                disabled={isSelf || full}
+                style={{
+                  padding: "11px 18px", borderRadius: 9, textAlign: "left", width: "100%",
+                  border: `2px solid ${picked ? color : isSelf || full ? "rgba(255,255,255,0.04)" : "rgba(255,255,255,0.1)"}`,
+                  background: picked ? `${color}18` : isSelf || full ? "rgba(255,255,255,0.01)" : "rgba(255,255,255,0.03)",
+                  color: isSelf ? "#444" : full ? "#555" : picked ? color : "#ccc",
+                  fontFamily: "'Cinzel',serif", fontWeight: 700, fontSize: 13,
+                  cursor: isSelf || full ? "not-allowed" : "pointer", letterSpacing: 0.5, transition: "all 0.15s",
+                  boxShadow: picked ? `0 0 14px ${color}33` : "none",
+                  display: "flex", alignItems: "center", justifyContent: "space-between",
+                }}
+              >
+                <span>{name}</span>
+                <span style={{ display: "flex", alignItems: "center", gap: 8 }}>
+                  {isSelf && <span style={{ fontSize: 11, color: "#555", fontWeight: 400 }}>yourself</span>}
+                  {full && !isSelf && <span style={{ fontSize: 11, color: "#555", fontWeight: 400 }}>max reached</span>}
+                  {picked && (
+                    <span style={{ background: color, color: "#1a1200", borderRadius: 6, padding: "2px 10px", fontSize: 12, fontWeight: 900, minWidth: 28, textAlign: "center" }}>
+                      #{rankIdx + 1} · {pointsArr[rankIdx]}pt{pointsArr[rankIdx] !== 1 ? "s" : ""}
+                    </span>
+                  )}
+                </span>
+              </button>
+
+              {/* Feedback textarea — only rendered when picked, stable key prevents remount */}
+              {picked && (
+                <div style={{ marginTop: 6, paddingLeft: 4 }}>
+                  <label style={{ display: "block", marginBottom: 4 }}>
+                    <span style={{ color: "#aaa", fontSize: 10, letterSpacing: 1.2, textTransform: "uppercase" }}>
+                      Why {name}?
+                    </span>
+                    {" "}
+                    <span style={{ color: "#ff6b6b", fontSize: 10, fontStyle: "italic" }}>*Required</span>
+                  </label>
+                  <textarea
+                    value={feedback[name] || ""}
+                    onChange={e => setFeedback(f => ({ ...f, [name]: e.target.value }))}
+                    rows={3}
+                    placeholder={`Why is ${name} your #${rankIdx + 1} MVP pick?`}
+                    style={{
+                      ...inputStyle, resize: "vertical", fontFamily: "'Crimson Pro', serif",
+                      fontSize: 13, lineHeight: 1.6,
+                      borderColor: !(feedback[name] || "").trim() ? "rgba(255,107,107,0.45)" : `${color}44`,
+                      borderLeft: `3px solid ${color}`,
+                    }}
+                  />
+                </div>
+              )}
+            </div>
+          );
+        })}
+      </div>
+    </div>
+  );
+}
 
 // ── MVP Form ──────────────────────────────────────────────────────────────────
 // Ranked-button candidate selection + required feedback textarea per picked name.
@@ -450,95 +611,6 @@ function MvpForm({ pollData, onRefresh }) {
     </div>
   );
 
-  // Reusable ranked section renderer
-  const RankSection = ({ sectionLabel, candidates, ranks, setRanks, feedback, setFeedback, maxPicks, pointsArr }) => (
-    <div style={{ marginBottom: 28 }}>
-      <div style={sectionHeaderStyle}>{sectionLabel}</div>
-      <p style={{ color: "#666", fontSize: 13, marginBottom: 10 }}>
-        Rank up to <strong style={{ color: "#ccc" }}>{maxPicks}</strong>. {pointsArr.slice(0, maxPicks).map((p, i) => `#${i+1}=${p}pt${p!==1?"s":""}`).join(", ")}.
-      </p>
-
-      {/* Rank tracker pills */}
-      <div style={{ display: "flex", gap: 8, marginBottom: 14, flexWrap: "wrap" }}>
-        {Array.from({ length: maxPicks }).map((_, i) => (
-          <div key={i} style={{
-            padding: "3px 12px", borderRadius: 6, fontSize: 12, fontWeight: 700,
-            border: `1px solid ${ranks[i] ? RANK_COLORS[i] : "rgba(255,255,255,0.08)"}`,
-            color: ranks[i] ? RANK_COLORS[i] : "#444",
-            background: ranks[i] ? `${RANK_COLORS[i]}15` : "transparent",
-          }}>
-            {ranks[i] ? `#${i+1} ${ranks[i]}` : `#${i+1} —`}
-          </div>
-        ))}
-      </div>
-
-      {/* Candidate buttons + feedback */}
-      <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
-        {candidates.map(name => {
-          const isSelf = isSelfFn(name);
-          const rankIdx = ranks.indexOf(name);
-          const picked = rankIdx !== -1;
-          const full = !picked && ranks.length >= maxPicks;
-          const color = picked ? RANK_COLORS[rankIdx] : null;
-          return (
-            <div key={name}>
-              <button
-                onClick={() => toggleRank(name, ranks, setRanks, setFeedback, maxPicks)}
-                disabled={isSelf || full}
-                style={{
-                  padding: "11px 18px", borderRadius: 9, textAlign: "left", width: "100%",
-                  border: `2px solid ${picked ? color : isSelf || full ? "rgba(255,255,255,0.04)" : "rgba(255,255,255,0.1)"}`,
-                  background: picked ? `${color}18` : isSelf || full ? "rgba(255,255,255,0.01)" : "rgba(255,255,255,0.03)",
-                  color: isSelf ? "#444" : full ? "#555" : picked ? color : "#ccc",
-                  fontFamily: "'Cinzel',serif", fontWeight: 700, fontSize: 13,
-                  cursor: isSelf || full ? "not-allowed" : "pointer", letterSpacing: 0.5, transition: "all 0.15s",
-                  boxShadow: picked ? `0 0 14px ${color}33` : "none",
-                  display: "flex", alignItems: "center", justifyContent: "space-between",
-                }}
-              >
-                <span>{name}</span>
-                <span style={{ display: "flex", alignItems: "center", gap: 8 }}>
-                  {isSelf && <span style={{ fontSize: 11, color: "#555", fontWeight: 400 }}>yourself</span>}
-                  {full && !isSelf && <span style={{ fontSize: 11, color: "#555", fontWeight: 400 }}>max reached</span>}
-                  {picked && (
-                    <span style={{ background: color, color: "#1a1200", borderRadius: 6, padding: "2px 10px", fontSize: 12, fontWeight: 900, minWidth: 28, textAlign: "center" }}>
-                      #{rankIdx + 1} · {pointsArr[rankIdx]}pt{pointsArr[rankIdx] !== 1 ? "s" : ""}
-                    </span>
-                  )}
-                </span>
-              </button>
-
-              {/* Feedback box — shown when picked */}
-              {picked && (
-                <div style={{ marginTop: 6, paddingLeft: 4 }}>
-                  <label style={{ display: "block", marginBottom: 4 }}>
-                    <span style={{ color: "#aaa", fontSize: 10, letterSpacing: 1.2, textTransform: "uppercase" }}>
-                      Why {name}?
-                    </span>
-                    {" "}
-                    <span style={{ color: "#ff6b6b", fontSize: 10, fontStyle: "italic" }}>*Required</span>
-                  </label>
-                  <textarea
-                    value={feedback[name] || ""}
-                    onChange={e => setFeedback(f => ({ ...f, [name]: e.target.value }))}
-                    rows={3}
-                    placeholder={`Why is ${name} your #${rankIdx + 1} MVP pick?`}
-                    style={{
-                      ...inputStyle, resize: "vertical", fontFamily: "'Crimson Pro', serif",
-                      fontSize: 13, lineHeight: 1.6,
-                      borderColor: !(feedback[name] || "").trim() ? "rgba(255,107,107,0.45)" : `${color}44`,
-                      borderLeft: `3px solid ${color}`,
-                    }}
-                  />
-                </div>
-              )}
-            </div>
-          );
-        })}
-      </div>
-    </div>
-  );
-
   return (
     <div>
       {mvp.image && (
@@ -558,20 +630,22 @@ function MvpForm({ pollData, onRefresh }) {
         onUnlock={() => { setLocked(false); setStaffRanks([]); setAdminRanks([]); setStaffFeedback({}); setAdminFeedback({}); }} />
 
       {mvp.staffEnabled && (mvp.staffCandidates || []).length > 0 && (
-        <RankSection
+        <MvpRankSection
           sectionLabel={`⭐ ${monthLabel}Staff MVP`}
           candidates={mvp.staffCandidates}
           ranks={staffRanks} setRanks={setStaffRanks}
           feedback={staffFeedback} setFeedback={setStaffFeedback}
+          isSelfFn={isSelfFn} toggleRank={toggleRank}
           maxPicks={3} pointsArr={STAFF_POINTS}
         />
       )}
       {mvp.adminEnabled && (mvp.adminCandidates || []).length > 0 && (
-        <RankSection
+        <MvpRankSection
           sectionLabel={`👑 ${monthLabel}Admin MVP`}
           candidates={mvp.adminCandidates}
           ranks={adminRanks} setRanks={setAdminRanks}
           feedback={adminFeedback} setFeedback={setAdminFeedback}
+          isSelfFn={isSelfFn} toggleRank={toggleRank}
           maxPicks={2} pointsArr={ADMIN_POINTS}
         />
       )}
