@@ -163,8 +163,16 @@ app.post("/api/mvp-vote", async (req, res) => {
     if (!data.mvpVoterNames) data.mvpVoterNames = [];
 
     data.mvpVotes[key] = {
-      staffPicks: (staffPicks || []).filter(p => p.name && p.name.trim()).map(p => ({ name: p.name.trim(), feedback: (p.feedback || "").trim() })),
-      adminPicks: (adminPicks || []).filter(p => p.name && p.name.trim()).map(p => ({ name: p.name.trim(), feedback: (p.feedback || "").trim() })),
+      staffPicks: (staffPicks || []).filter(p => p.name && p.name.trim()).map(p => ({
+        name: p.name.trim(),
+        feedback: (p.feedback || "").trim(),
+        points: typeof p.points === "number" ? p.points : 1,
+      })),
+      adminPicks: (adminPicks || []).filter(p => p.name && p.name.trim()).map(p => ({
+        name: p.name.trim(),
+        feedback: (p.feedback || "").trim(),
+        points: typeof p.points === "number" ? p.points : 1,
+      })),
     };
     data.mvpVoterNames.push(key);
     await writeData(data);
