@@ -241,6 +241,33 @@ function VotingForm({ pollData, onRefresh }) {
                 </div>
               );
             })}
+
+            {/* Anonymous strengths left by other staff */}
+            {(() => {
+              const strengthsList = Object.values(pollData.votes || {})
+                .map(v => ((v.feedbacks || {})[m.username] || {}).strengths)
+                .filter(s => s && s.trim());
+              if (strengthsList.length === 0) return null;
+              return (
+                <div style={{ marginTop: 6, paddingTop: 14, borderTop: "1px solid rgba(255,255,255,0.06)" }}>
+                  <div style={{ fontSize: 10, color: "#888", letterSpacing: 1.2, textTransform: "uppercase", marginBottom: 10 }}>
+                    💛 Staff left this positive feedback on {m.username}
+                  </div>
+                  <div style={{
+                    background: "rgba(245,197,66,0.04)",
+                    border: "1px solid rgba(245,197,66,0.15)",
+                    borderLeft: "3px solid rgba(245,197,66,0.5)",
+                    borderRadius: 8, padding: "10px 14px",
+                  }}>
+                    <div style={{ color: "#c8b06a", fontSize: 13, lineHeight: 1.75, fontStyle: "italic" }}>
+                      {strengthsList.map((s, i) => (
+                        <span key={i}>"{s.trim()}"{i < strengthsList.length - 1 ? ", " : ""}</span>
+                      ))}
+                    </div>
+                  </div>
+                </div>
+              );
+            })()}
           </div>
         );
       })}
