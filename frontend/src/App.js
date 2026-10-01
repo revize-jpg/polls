@@ -1488,7 +1488,173 @@ const submitBtnStyle  = { width:"100%", padding:"13px", borderRadius:10, border:
 const removeBtnStyle  = { background:"#ff444422", border:"1px solid #ff4444", color:"#ff8888", borderRadius:6, padding:"6px 12px", cursor:"pointer", fontSize:13, flexShrink:0 };
 const addBtnStyle     = { background:"rgba(255,215,0,0.1)", border:"1px solid rgba(255,215,0,0.3)", color:"#ffd700", borderRadius:8, padding:"8px 16px", fontFamily:"'Cinzel',serif", fontWeight:700, cursor:"pointer", fontSize:13, flexShrink:0 };
 const sectionHeaderStyle = { fontFamily:"'Cinzel',serif", color:"#e8d5a3", fontSize:14, fontWeight:700, letterSpacing:1, marginBottom:12, paddingBottom:8, borderBottom:"1px solid rgba(255,255,255,0.07)" };
-
+const BETA_PASSWORD = process.env.REACT_APP_BETA_PASSWORD || "DmoatBust1";
+ 
+// Time tier: $5 per 2 hours (min $5 for any time logged), capped at $60 (24h).
+// Matches the sheet: 1h→$5, 2h→$5, 3h→$5, 4h→$10, 11h→$25, 18h→$45, 24h→$60
+function calcTimeTier(hours) {
+  const h = Number(hours);
+  if (!h || h <= 0) return 0;
+  const capped = Math.min(h, 24);
+  return Math.max(5, Math.floor(capped / 2) * 5);
+}
+ 
+// Bug tier: 1+ → $5, 5+ → $15, 10+ → $50, 15+ (GitHub posting) → $80
+function calcBugTier(bugs) {
+  const b = Number(bugs);
+  if (!b || b <= 0) return 0;
+  if (b >= 15) return 80;
+  if (b >= 10) return 50;
+  if (b >= 5)  return 15;
+  return 5;
+}
+ 
+const money = n => `$${Number(n).toFixed(2)}`;
+ 
+function PayoutStat({ label, value, highlight }) {
+  return (
+    <div style={{
+      flex: "1 1 80px", textAlign: "center", padding: "8px 6px", borderRadius: 8,
+      background: highlight ? "rgba(245,197,66,0.12)" : "rgba(255,255,255,0.04)",
+      border: `1px solid ${highlight ? "rgba(245,197,66,0.4)" : "rgba(255,255,255,0.08)"}`,
+    }}>
+      <div style={{ fontSize: 10, color: "#888", letterSpacing: 1, textTransform: "uppercase", marginBottom: 3 }}>{label}</div>
+      <div style={{ fontFamily: "'Cinzel',serif", fontWeight: 700, fontSize: 15, color: highlight ? "#f5c542" : "#e8d5a3" }}>{value}</div>
+    </div>
+  );
+}
+ 
+function BetaPayoutCalculator() {
+  const [players, setPlayers] = useState([]);
+  const [newName, setNewName] = useState("");
+ 
+  const addPlayer = () => {
+    const name = newName.trim();
+    if (!name) return;
+    setPlayers(p => [...p, { name, hours: "", bugs: "", bonus: "" }]);
+    setNewName("");
+  };
+  const removePlayer = i => setPlayers(p => p.filter((_, idx) => idx !== i));
+  const update = (i, field, val) =>
+    setPlayers(p => p.map((pl, idx) => (idx === i ? { ...pl, [field]: val } : pl)));
+ 
+  const rows = players.map(pl => {
+    const time  = calcTimeTier(pl.hours);
+    const bug   = calcBugTier(pl.bugs);
+    const bonus = Number(pl.bonus) || 0;
+    return { time, bug, total: time + bug, bonus, end: time + bug + bonus };
+  });
+  const grandTotal = rows.reduce((s, r) => s + r.end, 0);
+ 
+  return (
+    <div>
+      <div style={{ ...sectionHeaderStyle, marginBottom: 6 }}>🧪 Beta Testing Payouts</div>
+      <p style={{ color: "#555", fontSize: 12, marginBottom: 14, lineHeight: 1.5 }}>
+        Time: $5 per 2 hours, capped at $60 (24h). Bugs: 1+ = $5, 5+ = $15, 10+ = $50, 15+ = $80.
+      </p>
+ 
+      <div style={{ display: "flex", gap: 8, marginBottom: 16 }}>
+        <input value={newName} onChange={e => setNewName(e.target.value)} placeholder="Add username"
+          style={{ ...inputStyle, flex: 1 }} onKeyDown={e => e.key === "Enter" && addPlayer()} />
+        <button onClick={addPlayer} style={addBtnStyle}>+ Add</button>
+      </div>
+ 
+      {players.length === 0 && (
+        <div style={{ textAlign: "center", padding: "20px 0", color: "#555", fontSize: 13 }}>
+          Add a username to start calculating payouts.
+        </div>
+      )}
+ 
+      {players.map((pl, i) => (
+        <div key={i} style={cardStyle}>
+          <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 12 }}>
+            <span style={{ fontFamily: "'Cinzel',serif", fontWeight: 700, fontSize: 15, color: "#e8d5a3", flex: 1 }}>{pl.name}</span>
+            <button onClick={() => removePlayer(i)} style={removeBtnStyle}>✕</button>
+          </div>
+ 
+          <div style={{ display: "flex", gap: 10, flexWrap: "wrap", marginBottom: 12 }}>
+            <div style={{ flex: "1 1 110px" }}>
+              <label style={labelStyle}>Hours spent</label>
+              <input type="number" min="0" step="0.5" value={pl.hours}
+                onChange={e => update(i, "hours", e.target.value)} style={inputStyle} placeholder="0" />
+            </div>
+            <div style={{ flex: "1 1 110px" }}>
+              <label style={labelStyle}>Unique bugs reported</label>
+              <input type="number" min="0" step="1" value={pl.bugs}
+                onChange={e => update(i, "bugs", e.target.value)} style={inputStyle} placeholder="0" />
+            </div>
+            <div style={{ flex: "1 1 110px" }}>
+              <label style={labelStyle}>Bonus ($)</label>
+              <input type="number" min="0" step="1" value={pl.bonus}
+                onChange={e => update(i, "bonus", e.target.value)} style={inputStyle} placeholder="0" />
+            </div>
+          </div>
+ 
+          <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
+            <PayoutStat label="Time Tier" value={money(rows[i].time)} />
+            <PayoutStat label="Bug Tier"  value={money(rows[i].bug)} />
+            <PayoutStat label="Total"     value={money(rows[i].total)} />
+            <PayoutStat label="Bonus"     value={money(rows[i].bonus)} />
+            <PayoutStat label="End"       value={money(rows[i].end)} highlight />
+          </div>
+        </div>
+      ))}
+ 
+      {players.length > 0 && (
+        <div style={{
+          display: "flex", justifyContent: "space-between", alignItems: "center",
+          padding: "12px 16px", borderRadius: 10, marginTop: 4,
+          background: "rgba(245,197,66,0.08)", border: "1px solid rgba(245,197,66,0.3)",
+        }}>
+          <span style={{ fontFamily: "'Cinzel',serif", color: "#e8d5a3", fontWeight: 700 }}>Grand total</span>
+          <span style={{ fontFamily: "'Cinzel',serif", color: "#f5c542", fontWeight: 900, fontSize: 18 }}>{money(grandTotal)}</span>
+        </div>
+      )}
+    </div>
+  );
+}
+ 
+// ── Beta access gate ──────────────────────────────────────────────────────────
+function BetaSection() {
+  const [pw, setPw]             = useState("");
+  const [unlocked, setUnlocked] = useState(false);
+  const [error, setError]       = useState("");
+ 
+  const unlock = () => {
+    if (pw === BETA_PASSWORD) { setUnlocked(true); setError(""); }
+    else setError("Wrong password.");
+  };
+ 
+  return (
+    <div style={{ borderTop: "1px solid rgba(255,215,0,0.12)", marginTop: 24, paddingTop: 24 }}>
+      {!unlocked ? (
+        <div style={{ textAlign: "center" }}>
+          <div style={{ fontSize: 40, marginBottom: 14 }}>🧪</div>
+          <p style={{ color: "#888", marginBottom: 14, fontSize: 14 }}>Beta access required</p>
+          <input type="password" value={pw} onChange={e => setPw(e.target.value)}
+            onKeyDown={e => e.key === "Enter" && unlock()}
+            placeholder="Password" style={{ ...inputStyle, width: "100%", textAlign: "center", marginBottom: 12 }} />
+          {error && <div style={errorStyle}>⚠ {error}</div>}
+          <button onClick={unlock} style={submitBtnStyle}>Unlock</button>
+        </div>
+      ) : (
+        <BetaPayoutCalculator />
+      )}
+    </div>
+  );
+}
+ 
+// ── AdminPanel wrapper ────────────────────────────────────────────────────────
+// 1) In your existing file, rename:  function AdminPanel(  →  function AdminPanelBody(
+// 2) Add this new AdminPanel right after it:
+function AdminPanel({ pollData, onRefresh }) {
+  return (
+    <>
+      <AdminPanelBody pollData={pollData} onRefresh={onRefresh} />
+      <BetaSection />
+    </>
+  );
+}
 // ── Root App ──────────────────────────────────────────────────────────────────
 export default function App() {
   const [pollData, setPollData] = useState(null);
