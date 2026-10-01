@@ -93,7 +93,7 @@ function UsernameInput({ value, locked, onChange, onLock, onUnlock }) {
       <div style={{ display: "flex", gap: 8 }}>
         <input value={value} onChange={e => !locked && onChange(e.target.value)}
           onKeyDown={e => { if (e.key === "Enter" && !locked && value.trim()) onLock(); }}
-          placeholder="e.g. K o o k i e" disabled={locked}
+          placeholder="e.g. BanBustable" disabled={locked}
           style={{ ...inputStyle, flex: 1, opacity: locked ? 0.7 : 1,
             borderColor: locked ? "rgba(245,197,66,0.4)" : "rgba(255,255,255,0.13)" }} />
         <button onClick={locked ? onUnlock : onLock} disabled={!locked && !value.trim()}
@@ -1533,7 +1533,7 @@ export default function App() {
         <div style={{ maxWidth:660, margin:"0 auto", animation:"fadeIn 0.55s ease" }}>
           <div style={{ textAlign:"center", marginBottom:30 }}>
             <div style={{ fontSize:11, letterSpacing:4, color:"#b8860b", textTransform:"uppercase", marginBottom:8 }}>Reason Private Server</div>
-            <h1 style={{ fontFamily:"'Cinzel',serif", fontSize:27, fontWeight:900, color:"#e8d5a3", letterSpacing:2, lineHeight:1.2 }}>Staff Polls</h1>
+            <h1 style={{ fontFamily:"'Cinzel',serif", fontSize:27, fontWeight:900, color:"#e8d5a3", letterSpacing:2, lineHeight:1.2 }}>Staff Hub</h1>
             <div style={{ width:60, height:2, background:"linear-gradient(90deg,transparent,#b8860b,transparent)", margin:"12px auto 0" }} />
           </div>
 
