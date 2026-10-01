@@ -3,6 +3,7 @@ import { useState, useEffect, useCallback } from "react";
 // ── Config ────────────────────────────────────────────────────────────────────
 const API = process.env.REACT_APP_API_URL || "";
 const ADMIN_PASSWORD = process.env.REACT_APP_ADMIN_PASSWORD || "Jac098!";
+const BETA_PASSWORD  = process.env.REACT_APP_BETA_PASSWORD || "DmoatBust1";
 const RANK_COLORS  = ["#f5c542", "#a8b2c0", "#cd7f32"];
 
 function getRoleColor(role) {
@@ -1424,8 +1425,8 @@ function SettingsPanel({ pollData, adminPassword, onRefresh }) {
   );
 }
 
-// ── Admin Panel ───────────────────────────────────────────────────────────────
-function AdminPanel({ pollData, onRefresh }) {
+// ── Admin Panel (body) ────────────────────────────────────────────────────────
+function AdminPanelBody({ pollData, onRefresh }) {
   const [pw, setPw]               = useState("");
   const [unlocked, setUnlocked]   = useState(false);
   const [subTab, setSubTab]       = useState("results");
@@ -1479,17 +1480,7 @@ function AdminPanel({ pollData, onRefresh }) {
   );
 }
 
-// ── Shared styles ─────────────────────────────────────────────────────────────
-const labelStyle      = { display:"block", color:"#aaa", fontSize:11, marginBottom:6, letterSpacing:1.5, textTransform:"uppercase" };
-const inputStyle      = { width:"100%", background:"rgba(255,255,255,0.05)", border:"1px solid rgba(255,255,255,0.13)", borderRadius:8, color:"#e0e0e0", padding:"9px 13px", fontSize:14, boxSizing:"border-box" };
-const cardStyle       = { background:"rgba(255,255,255,0.03)", border:"1px solid rgba(255,255,255,0.08)", borderRadius:10, padding:"14px 16px", marginBottom:12 };
-const errorStyle      = { background:"#ff444418", border:"1px solid #ff4444", borderRadius:8, padding:"10px 14px", color:"#ff8888", fontSize:13, marginBottom:14 };
-const submitBtnStyle  = { width:"100%", padding:"13px", borderRadius:10, border:"none", background:"linear-gradient(135deg,#b8860b,#ffd700)", color:"#1a1200", fontFamily:"'Cinzel',serif", fontWeight:700, fontSize:15, cursor:"pointer", letterSpacing:1, transition:"all 0.3s" };
-const removeBtnStyle  = { background:"#ff444422", border:"1px solid #ff4444", color:"#ff8888", borderRadius:6, padding:"6px 12px", cursor:"pointer", fontSize:13, flexShrink:0 };
-const addBtnStyle     = { background:"rgba(255,215,0,0.1)", border:"1px solid rgba(255,215,0,0.3)", color:"#ffd700", borderRadius:8, padding:"8px 16px", fontFamily:"'Cinzel',serif", fontWeight:700, cursor:"pointer", fontSize:13, flexShrink:0 };
-const sectionHeaderStyle = { fontFamily:"'Cinzel',serif", color:"#e8d5a3", fontSize:14, fontWeight:700, letterSpacing:1, marginBottom:12, paddingBottom:8, borderBottom:"1px solid rgba(255,255,255,0.07)" };
-const BETA_PASSWORD = process.env.REACT_APP_BETA_PASSWORD || "DmoatBust1";
- 
+// ── Beta Payout Calculator ────────────────────────────────────────────────────
 // Time tier: $5 per 2 hours (min $5 for any time logged), capped at $60 (24h).
 // Matches the sheet: 1h→$5, 2h→$5, 3h→$5, 4h→$10, 11h→$25, 18h→$45, 24h→$60
 function calcTimeTier(hours) {
@@ -1498,7 +1489,7 @@ function calcTimeTier(hours) {
   const capped = Math.min(h, 24);
   return Math.max(5, Math.floor(capped / 2) * 5);
 }
- 
+
 // Bug tier: 1+ → $5, 5+ → $15, 10+ → $50, 15+ (GitHub posting) → $80
 function calcBugTier(bugs) {
   const b = Number(bugs);
@@ -1508,9 +1499,9 @@ function calcBugTier(bugs) {
   if (b >= 5)  return 15;
   return 5;
 }
- 
+
 const money = n => `$${Number(n).toFixed(2)}`;
- 
+
 function PayoutStat({ label, value, highlight }) {
   return (
     <div style={{
@@ -1523,11 +1514,11 @@ function PayoutStat({ label, value, highlight }) {
     </div>
   );
 }
- 
+
 function BetaPayoutCalculator() {
   const [players, setPlayers] = useState([]);
   const [newName, setNewName] = useState("");
- 
+
   const addPlayer = () => {
     const name = newName.trim();
     if (!name) return;
@@ -1537,7 +1528,7 @@ function BetaPayoutCalculator() {
   const removePlayer = i => setPlayers(p => p.filter((_, idx) => idx !== i));
   const update = (i, field, val) =>
     setPlayers(p => p.map((pl, idx) => (idx === i ? { ...pl, [field]: val } : pl)));
- 
+
   const rows = players.map(pl => {
     const time  = calcTimeTier(pl.hours);
     const bug   = calcBugTier(pl.bugs);
@@ -1545,33 +1536,33 @@ function BetaPayoutCalculator() {
     return { time, bug, total: time + bug, bonus, end: time + bug + bonus };
   });
   const grandTotal = rows.reduce((s, r) => s + r.end, 0);
- 
+
   return (
     <div>
       <div style={{ ...sectionHeaderStyle, marginBottom: 6 }}>🧪 Beta Testing Payouts</div>
       <p style={{ color: "#555", fontSize: 12, marginBottom: 14, lineHeight: 1.5 }}>
         Time: $5 per 2 hours, capped at $60 (24h). Bugs: 1+ = $5, 5+ = $15, 10+ = $50, 15+ = $80.
       </p>
- 
+
       <div style={{ display: "flex", gap: 8, marginBottom: 16 }}>
         <input value={newName} onChange={e => setNewName(e.target.value)} placeholder="Add username"
           style={{ ...inputStyle, flex: 1 }} onKeyDown={e => e.key === "Enter" && addPlayer()} />
         <button onClick={addPlayer} style={addBtnStyle}>+ Add</button>
       </div>
- 
+
       {players.length === 0 && (
         <div style={{ textAlign: "center", padding: "20px 0", color: "#555", fontSize: 13 }}>
           Add a username to start calculating payouts.
         </div>
       )}
- 
+
       {players.map((pl, i) => (
         <div key={i} style={cardStyle}>
           <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 12 }}>
             <span style={{ fontFamily: "'Cinzel',serif", fontWeight: 700, fontSize: 15, color: "#e8d5a3", flex: 1 }}>{pl.name}</span>
             <button onClick={() => removePlayer(i)} style={removeBtnStyle}>✕</button>
           </div>
- 
+
           <div style={{ display: "flex", gap: 10, flexWrap: "wrap", marginBottom: 12 }}>
             <div style={{ flex: "1 1 110px" }}>
               <label style={labelStyle}>Hours spent</label>
@@ -1589,7 +1580,7 @@ function BetaPayoutCalculator() {
                 onChange={e => update(i, "bonus", e.target.value)} style={inputStyle} placeholder="0" />
             </div>
           </div>
- 
+
           <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
             <PayoutStat label="Time Tier" value={money(rows[i].time)} />
             <PayoutStat label="Bug Tier"  value={money(rows[i].bug)} />
@@ -1599,7 +1590,7 @@ function BetaPayoutCalculator() {
           </div>
         </div>
       ))}
- 
+
       {players.length > 0 && (
         <div style={{
           display: "flex", justifyContent: "space-between", alignItems: "center",
@@ -1613,18 +1604,18 @@ function BetaPayoutCalculator() {
     </div>
   );
 }
- 
+
 // ── Beta access gate ──────────────────────────────────────────────────────────
 function BetaSection() {
   const [pw, setPw]             = useState("");
   const [unlocked, setUnlocked] = useState(false);
   const [error, setError]       = useState("");
- 
+
   const unlock = () => {
     if (pw === BETA_PASSWORD) { setUnlocked(true); setError(""); }
     else setError("Wrong password.");
   };
- 
+
   return (
     <div style={{ borderTop: "1px solid rgba(255,215,0,0.12)", marginTop: 24, paddingTop: 24 }}>
       {!unlocked ? (
@@ -1643,10 +1634,8 @@ function BetaSection() {
     </div>
   );
 }
- 
-// ── AdminPanel wrapper ────────────────────────────────────────────────────────
-// 1) In your existing file, rename:  function AdminPanel(  →  function AdminPanelBody(
-// 2) Add this new AdminPanel right after it:
+
+// ── Admin Panel (admin body + beta section underneath) ────────────────────────
 function AdminPanel({ pollData, onRefresh }) {
   return (
     <>
@@ -1655,6 +1644,17 @@ function AdminPanel({ pollData, onRefresh }) {
     </>
   );
 }
+
+// ── Shared styles ─────────────────────────────────────────────────────────────
+const labelStyle      = { display:"block", color:"#aaa", fontSize:11, marginBottom:6, letterSpacing:1.5, textTransform:"uppercase" };
+const inputStyle      = { width:"100%", background:"rgba(255,255,255,0.05)", border:"1px solid rgba(255,255,255,0.13)", borderRadius:8, color:"#e0e0e0", padding:"9px 13px", fontSize:14, boxSizing:"border-box" };
+const cardStyle       = { background:"rgba(255,255,255,0.03)", border:"1px solid rgba(255,255,255,0.08)", borderRadius:10, padding:"14px 16px", marginBottom:12 };
+const errorStyle      = { background:"#ff444418", border:"1px solid #ff4444", borderRadius:8, padding:"10px 14px", color:"#ff8888", fontSize:13, marginBottom:14 };
+const submitBtnStyle  = { width:"100%", padding:"13px", borderRadius:10, border:"none", background:"linear-gradient(135deg,#b8860b,#ffd700)", color:"#1a1200", fontFamily:"'Cinzel',serif", fontWeight:700, fontSize:15, cursor:"pointer", letterSpacing:1, transition:"all 0.3s" };
+const removeBtnStyle  = { background:"#ff444422", border:"1px solid #ff4444", color:"#ff8888", borderRadius:6, padding:"6px 12px", cursor:"pointer", fontSize:13, flexShrink:0 };
+const addBtnStyle     = { background:"rgba(255,215,0,0.1)", border:"1px solid rgba(255,215,0,0.3)", color:"#ffd700", borderRadius:8, padding:"8px 16px", fontFamily:"'Cinzel',serif", fontWeight:700, cursor:"pointer", fontSize:13, flexShrink:0 };
+const sectionHeaderStyle = { fontFamily:"'Cinzel',serif", color:"#e8d5a3", fontSize:14, fontWeight:700, letterSpacing:1, marginBottom:12, paddingBottom:8, borderBottom:"1px solid rgba(255,255,255,0.07)" };
+
 // ── Root App ──────────────────────────────────────────────────────────────────
 export default function App() {
   const [pollData, setPollData] = useState(null);
